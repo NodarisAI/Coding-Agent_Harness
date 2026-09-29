@@ -3,6 +3,10 @@
 import os, sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "engine"))
+if sys.argv[1:2] == ["statusline"]:
+    # Claude Code runs the status line on every refresh; skip loading the whole CLI.
+    from nodaris_harness.statusline import main as statusline  # noqa: E402
+    sys.exit(statusline() or 0)
 from nodaris_harness.cli import main  # noqa: E402
 
 sys.exit(main())
