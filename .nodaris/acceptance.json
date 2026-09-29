@@ -63,7 +63,7 @@
      "run": ["gh", "pr", "view", "feat/harness-v1", "--repo", "NodarisAI/Coding-Agent_Harness", "--json", "number"]},
     {"id": "github-profile", "title": "The GitHub repository has a description and topics",
      "run": ["sh", "-c", "gh repo view NodarisAI/Coding-Agent_Harness --json description,repositoryTopics -q '(.description | length) > 0 and ((.repositoryTopics // []) | length) > 0' | grep -qx true"]},
-    {"id": "gitdiagram", "title": "The private repository can be opened in GitDiagram",
+    {"id": "gitdiagram", "title": "GitDiagram setup for the private repository is documented (Varun picks hosted or self-hosted)",
      "owner": "Varun", "action": "Choose hosted GitDiagram with a read-only token, or self-hosting (docs/GITDIAGRAM.md)",
      "files": ["docs/GITDIAGRAM.md"]},
     {"id": "teammate-install-github", "title": "A teammate can install it from GitHub's main branch",
