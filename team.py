@@ -189,7 +189,8 @@ def build(dest, packs=PACK_NAMES):
     ign = shutil.ignore_patterns("tests", "__pycache__", "*.pyc", ".pytest_cache", ".DS_Store", "*.log", "*.jsonl")
     shutil.copytree(PACK / "hooks", dest / "hooks", ignore=ign)
     for g in (VENDOR / "guards").iterdir():
-        shutil.copy2(g, dest / "hooks" / g.name)
+        if g.is_file() and g.suffix == ".py" and not g.name.startswith("test_"):
+            shutil.copy2(g, dest / "hooks" / g.name)
     shutil.copytree(PACK / "tools", dest / "tools", ignore=ign)
     src_note = dest / "tools" / "phi_guard.SOURCE.json"
     if src_note.exists():  # provenance without the owner's home path

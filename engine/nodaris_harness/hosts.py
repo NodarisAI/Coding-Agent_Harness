@@ -14,7 +14,7 @@ BEGIN, END = "<!-- nodaris-harness:begin -->", "<!-- nodaris-harness:end -->"
 ENGINE_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Host: config file, hook shape, rules file, skills folder, and the degree of enforcement we can claim.
-CLAUDE_EVENTS = [("PreToolUse", "Bash|Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob"), ("UserPromptSubmit", None),
+CLAUDE_EVENTS = [("PreToolUse", "Bash|Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob|Task|Agent"), ("UserPromptSubmit", None),
                  ("PostToolUse", "Bash|Write|Edit|MultiEdit|NotebookEdit|Task|Agent|Skill"),
                  ("PostToolUseFailure", "Bash|Write|Edit|MultiEdit|NotebookEdit"), ("Stop", None), ("PreCompact", None),
                  ("SessionStart", None)]
@@ -116,6 +116,9 @@ def _hooks_json(host, raw, root):
             group["matcher"] = matcher
         lst.append(group)
         hooks[ev] = lst
+    if host == "claude" and _harness_setting("statusline", True) and not data.get("statusLine"):
+        # Only when the person has no status line of their own; uninstall removes it again.
+        data["statusLine"] = {"type": "command", "command": f'"{python()}" "{bin_path(root)}" statusline', "padding": 0}
     if host == "gemini":
         ctx = data.setdefault("context", {})
         names = ctx.get("fileName") or ["GEMINI.md"]
@@ -126,8 +129,18 @@ def _hooks_json(host, raw, root):
     return data
 
 
+def _harness_setting(key, default):
+    try:
+        with open(os.path.join(home(), "settings.json")) as fh:
+            return json.load(fh).get(key, default)
+    except (OSError, ValueError):
+        return default
+
+
 def _strip_hooks(raw):
     data = _load_json(raw)
+    if "nodaris-harness\" statusline" in json.dumps(data.get("statusLine") or {}).replace("\\\"", "\""):
+        del data["statusLine"]
     hooks = data.get("hooks", {})
     for ev in list(hooks):
         hooks[ev] = [g for g in hooks[ev] if not _ours(g)]

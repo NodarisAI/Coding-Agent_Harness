@@ -46,6 +46,7 @@ RULES = {
                  "launch profiles or the keychain)",
     "env-file": "a .env secrets file",
     "env-overwrite": "an existing .env secrets file, which would be overwritten",
+    "secret-literal": "a literal credential value (an API key, access token or private key)",
     "secret-env-var": "an environment variable that holds a secret",
     "env-dump": "the whole environment, which holds API keys",
     "keychain-secret": "a password stored in the macOS keychain",
@@ -1158,9 +1159,50 @@ def settings_rule(tool: str, ti: dict, path: str) -> str | None:
     return None
 
 
+# Literal credentials written into a file or a command. Shapes follow each vendor's published token format;
+# the pattern list was compared against multica's redaction list (github_pat_, xapp-, glpat-, sk_live_/rk_live_
+# with pk_live_ excluded, AIza keys). A value made of placeholder text is ignored.
+SECRET_LITERALS = [
+    ("GitHub token", re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{60,})")),
+    ("GitLab token", re.compile(r"\bglpat-[A-Za-z0-9_-]{20,}")),
+    ("Slack token", re.compile(r"\b(?:xox[abposr]-[A-Za-z0-9-]{20,}|xapp-\d-[A-Za-z0-9]+-\d+-[a-f0-9]{32,})")),
+    ("Stripe secret key", re.compile(r"\b[rs]k_live_[A-Za-z0-9]{20,}")),
+    ("Google API key", re.compile(r"\bAIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])")),
+    ("AWS access key", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
+    ("Anthropic key", re.compile(r"\bsk-ant-(?:api|admin)\d{2}-[A-Za-z0-9_-]{60,}")),
+    ("OpenAI key", re.compile(r"\bsk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{40,}")),
+    ("OpenRouter key", re.compile(r"\bsk-or-v1-[a-f0-9]{64}\b")),
+    ("private key", re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED |PGP )?PRIVATE KEY( BLOCK)?-----"
+                               r"[ \t]*(?:\\n|\r?\n)(?:[A-Za-z0-9+/=]|\\n|\r?\n){200,}")),
+]
+PLACEHOLDER = re.compile(r"(?i)example|placeholder|dummy|fake|sample|redacted|your[_-]?|x{6,}|(.)\1{7,}|0123456789")
+LAST_LITERAL = {"kind": ""}
+
+
+def written_text(tool: str, ti: dict) -> str:
+    if tool == "Bash":
+        return str(ti.get("command") or "")
+    parts = [ti.get("content"), ti.get("new_string"), ti.get("new_source")]
+    parts += [e.get("new_string") for e in ti.get("edits") or [] if isinstance(e, dict)]
+    return "\n".join(str(p) for p in parts if p)
+
+
+def literal_kind(text: str):
+    for kind, rx in SECRET_LITERALS:
+        for m in rx.finditer(text or ""):
+            if kind == "private key" or not PLACEHOLDER.search(m.group(0)):
+                return kind
+    return None
+
+
 def decide(tool: str, tool_input: dict, cwd: str):
     """(denied, rule) for one tool call."""
     ti = tool_input if isinstance(tool_input, dict) else {}
+    if tool in ("Bash", "Write", "Edit", "MultiEdit", "NotebookEdit"):
+        kind = literal_kind(written_text(tool, ti))
+        if kind:
+            LAST_LITERAL["kind"] = kind
+            return True, "secret-literal"
     if tool == "Bash":
         rule = decide_shell(str(ti.get("command") or ""), cwd)
         return (rule is not None), rule
@@ -1231,6 +1273,15 @@ def main() -> None:
                   "plain `git push`. To merge a pull request, run `/usr/bin/python3 -I ~/.git-hooks/push_approval.py "
                   "merge --repo OWNER/REPO --pr N --squash` (or --merge or --rebase, optionally --delete-branch); it "
                   "asks the owner and merges only after their approval. If the gate needs a change, ask the owner.")
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                                 "permissionDecisionReason": reason}}))
+        print(reason, file=sys.stderr)
+        sys.exit(2)
+    if rule == "secret-literal":
+        reason = (f"Blocked by the secret guard: this call contains a literal {LAST_LITERAL['kind']}. Keep "
+                  "credentials in a git-ignored .env file and refer to them by variable name. In tests and docs, use "
+                  "an obvious placeholder such as `ghp_EXAMPLE`. The value was not logged. If the person really "
+                  "wants this value written, they must do it themselves.")
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
                                                  "permissionDecisionReason": reason}}))
         print(reason, file=sys.stderr)

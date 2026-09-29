@@ -122,6 +122,37 @@ makes a later change a one-line edit rather than a hunt.
 Fluid `clamp()` type removes an entire class of breakpoint bugs, and one shared
 `--ease` is why a page's motion feels like it came from one hand.
 
+## The one-sentence intent gate
+
+Before any motion code, write one sentence that says what the motion is for, and
+get a yes from the user. "Cards rise 12px and fade in as they enter, 240ms
+ease-out, so the pricing reads top to bottom" passes. "Make it feel smooth" does
+not. If you cannot write the sentence, you have not decided yet, and the build
+will default to generic motion. One sentence per feature, not one per site.
+Idea from Genjutsu's thesis step (AThevon/genjutsu, MIT).
+
+## Motion principles for UI
+
+Timing and easing decide whether motion feels crafted or cheap. The short
+version:
+
+- **Durations.** 120-200ms for hovers, presses and toggles; 200-300ms for
+  menus, cards and panels entering; up to 400-500ms only for large, rare moves
+  such as a page transition. Anything a person waits on repeatedly stays under
+  300ms.
+- **Easing.** Ease-out (fast start, gentle stop) for anything entering or
+  responding to input; ease-in only for things leaving; never linear for moving
+  objects. One shared curve for the whole product.
+- **Staging.** One focal motion at a time. Stagger a group by 30-60ms rather
+  than moving everything at once.
+- **Anticipation and follow-through.** Small and physical: a 2-4% press-down
+  before a button springs back, a slight overshoot on a drawer that settles.
+  Never enough to delay the result.
+- **Exit faster than enter**, by about a third.
+
+Full notes, with the Disney principles mapped to UI and a CSS token set, are in
+`references/motion-principles.md`.
+
 ## What actually makes a page read as AI-built
 
 Run this before showing anything. Each item is a specific, fixable tell:

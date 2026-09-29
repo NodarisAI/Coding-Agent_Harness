@@ -67,7 +67,8 @@ def parse(host, payload, event=None):
           "cwd": p.get("cwd") or (p.get("workspace_roots") or [None])[0] or os.getcwd(),
           "transcript_path": p.get("transcript_path"), "stop_hook_active": bool(p.get("stop_hook_active")),
           "source": p.get("source"), "last_assistant_message": p.get("last_assistant_message"),
-          "tool_response": p.get("tool_response"), "prompt": p.get("prompt"), "error": p.get("error")}
+          "tool_response": p.get("tool_response"), "prompt": p.get("prompt"), "error": p.get("error"),
+          "agent_id": p.get("agent_id"), "agent_type": p.get("agent_type")}
     name = event or p.get("hook_event_name") or p.get("event") or ""
     if host in ("claude", "codex"):
         ev["hook_event_name"] = name
@@ -142,6 +143,11 @@ def render(host, ev, outcome):
             if blocked:
                 return json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
                                                           "permissionDecisionReason": reason}}), 0
+            if outcome.get("updated_input") is not None and host == "claude":
+                out = {"hookEventName": "PreToolUse", "permissionDecision": "allow", "updatedInput": outcome["updated_input"]}
+                if ctx:
+                    out["additionalContext"] = ctx
+                return json.dumps({"hookSpecificOutput": out}), 0
             return (json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": ctx}}) if ctx else ""), 0
         if name in ("UserPromptSubmit", "Stop") and blocked:
             return json.dumps({"decision": "block", "reason": reason}), 0

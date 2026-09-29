@@ -205,3 +205,23 @@ def stop_check(ev, cli="nodaris-harness"):
                     f"### heading), Chosen, Rejected and Acceptance checks. Follow the design skill.{why} Check it with "
                     f"`{cli} design check <file>`.")
     return None
+
+
+PROTECTED_BRANCHES = {"main", "master", "prod", "production", "staging", "release"}
+
+
+def branch_check(ev):
+    """The first edit on a protected branch is sent back once with the branch instruction; the person can override."""
+    path = (ev.get("tool_input") or {}).get("file_path") or (ev.get("tool_input") or {}).get("notebook_path") or ""
+    where = os.path.dirname(os.path.join(ev.get("cwd") or ".", path)) if path else (ev.get("cwd") or ".")
+    if not os.path.isdir(where):
+        where = ev.get("cwd") or "."
+    branch = _git(where, "rev-parse", "--abbrev-ref", "HEAD")
+    if branch not in PROTECTED_BRANCHES:
+        return None
+    top = _git(where, "rev-parse", "--show-toplevel")
+    if not _once(ev.get("session_id"), "branch:" + top):
+        return None
+    return (f"This repository is on `{branch}`. Changes go on their own branch: run `git switch -c feat/<short-topic>` "
+            f"(or fix/, docs/, chore/) in {top}, then make the edit again. If the person asked to work on `{branch}` "
+            f"directly, make the edit again and it will go through.")

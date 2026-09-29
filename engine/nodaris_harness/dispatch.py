@@ -10,7 +10,7 @@ the call (a safety check that cannot run is not a pass).
 """
 import json, os, subprocess, sys
 
-from . import compact, copylint, designlint, events, gates, learner, memory, profile, signals, policy, redact, router, trajectory
+from . import capsule, compact, copylint, designlint, events, gates, learner, memory, onboard, policy, profile, redact, router, signals, trajectory
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPT_TIMEOUT = 60
@@ -65,7 +65,36 @@ def _approval_text(decision, ev):
     return msg
 
 
+AGENT_TOOLS = ("Task", "Agent")
+
+
+def _setting(key, default):
+    try:
+        with open(os.path.join(policy.home(), "settings.json")) as f:
+            return json.load(f).get(key, default)
+    except (OSError, ValueError):
+        return default
+
+
 def pre_tool(ev):
+    try:
+        beat = capsule.pulse(ev)
+    except (OSError, ValueError):
+        beat = None
+    if beat and beat["decision"] == "deny":
+        return beat
+    out = _pre_tool(ev)
+    if beat and out.get("decision") == "allow":
+        out["context"] = "\n\n".join(x for x in (out.get("context"), beat.get("context")) if x)
+    return out
+
+
+def _pre_tool(ev):
+    if ev["tool_name"] in AGENT_TOOLS and not ev.get("agent_id"):
+        try:
+            return capsule.before_launch(ev)
+        except (OSError, ValueError, TypeError):
+            return {"decision": "allow"}  # the capsule is guidance; a broken one must not stop the launch
     payload = events.claude_payload(ev)
     for name, tools in GUARDS:
         if ev["tool_name"] in tools:
@@ -77,6 +106,10 @@ def pre_tool(ev):
             if res[0] == 2:
                 why = (_json(res[1]).get("hookSpecificOutput") or {}).get("permissionDecisionReason") or res[2].strip()
                 return {"decision": "deny", "rule": name.replace(".py", ""), "reason": why}
+    if ev["tool_name"] in EDIT_TOOLS and not ev.get("agent_id") and _setting("branch_rule", True):
+        why = gates.branch_check(ev)
+        if why:
+            return {"decision": "deny", "rule": "branch-rule", "reason": why}
     pol = policy.load_policy()
     decision = policy.classify(ev["tool_name"], ev.get("tool_input"), ev["cwd"], pol)
     if decision.cls == "prohibited":
@@ -131,6 +164,8 @@ def post_tool(ev):
             res = _run(HOOKS_DIR, name, payload)
             if res:
                 parts.append(_context_of(res[1]))
+    if ev["tool_name"] in AGENT_TOOLS and ev["hook_event_name"] == "PostToolUse" and not ev.get("agent_id"):
+        parts.append(capsule.after_return(ev))
     if ev["tool_name"] == "Skill" and ev["hook_event_name"] == "PostToolUse":
         signals.record(ev["session_id"], "skill", name=str((ev.get("tool_input") or {}).get("skill") or "")[:60])
     if ev["tool_name"] in EDIT_TOOLS and ev["hook_event_name"] == "PostToolUse":
@@ -174,6 +209,8 @@ def handle(ev):
         elif name == "SessionStart":
             ctx = compact.restore(ev["session_id"]) if ev.get("source") in ("compact", "resume") else ""
             learned = profile.summary() if ev.get("source") in (None, "startup", "clear") else ""
+            if ev.get("source") in (None, "startup", "clear") and not onboard.is_onboarded():
+                learned = "\n\n".join(x for x in (onboard.app_instructions(CLI), learned) if x)
             learner.start_in_background(CLI)
             outcome = {"decision": "allow", "context": "\n\n".join(x for x in (learned, ctx) if x)}
         else:

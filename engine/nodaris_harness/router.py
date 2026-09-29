@@ -21,7 +21,10 @@ RULES = [
     ("bug-fix", r"\b(bug|broken|crash\w*|fail\w*|error\w*|doesn'?t work|not working|wrong|regress\w*|fix|"
                 r"resets?|disappears?|stuck|hangs?|freezes?|flickers?|duplicates?|missing|keeps (\w+ing)|stopped \w+ing)\b"),
     ("rcm-data", r"\b(835|837|27[01]|era\b|remit|eob|claim file|x12|edi\b|payer file|charge (entry|file)|posting|reconcil|denial|carc|rarc)\b"),
-    ("media", r"\b(video|film|reel|trailer|promo clip|launch clip|explainer|animat\w*|motion design|lottie|gif|3d scene|three\.?js|remotion|hyperframes)\b"),
+    ("media", r"\b(video|film|reel|trailer|promo clip|launch clip|explainer|animat\w*|motion( design)?|lottie|gif|3d scene|three\.?js|webgl|"
+              r"remotion|hyperframes|ffmpeg|footage|b-?roll|soundtrack|voice ?over|captions? (on|for) (the|a|this|my) (video|clip)|"
+              r"(edit|cut|trim|splice|montage) (a|the|this|my) (video|clip|footage)|splash screen|ascii (art|banner)|"
+              r"(terminal|cli|console) (animation|splash|banner|spinner)|parallax|scroll(-| )?(driven|triggered)|gsap)\b"),
     ("refactor", r"\b(refactor|rename|extract|inline|dedup\w*|clean ?up|move .* (into|to)|simplif\w*|restructure)\b"),
     ("plan", r"\b(plan|roadmap|phases?|milestones?|break (this|it) down|spec out|design doc|rfc)\b"),
     ("feature", r"\b(add|build|make|create|implement|support|allow|let|enable|change|update|extend|wire|hook)\b"),
@@ -37,7 +40,7 @@ OVERLAYS = [
 ]
 PLAYBOOKS = {
     "media": [
-        "Pick the tool before writing anything: a short film of this product or a website uses the product-film skill; motion inside a web page (scroll, transitions, 3D) uses the project's existing animation library or CSS; a longer programmatic video in a React project may use Remotion; HTML-to-video compositions may use Hyperframes. Say which one and why in one line.",
+        "Load the creative-studio skill first and follow its routing table; do not improvise the method. It names the skill and tool for each kind of request: product-film for a film of a product or site, web-motion-primitives, gsap-scroll-motion and threejs-webgl-scenes for motion in a page, video-toolkit (ffmpeg, Remotion, Hyperframes, VHS) for generating or editing video, terminal-motion for CLI splash screens and animation. Say which one and why in one line.",
         "Install nothing new without asking, and pin any version you do install; never run a package with npx or uvx at an unpinned version.",
         "Screens shown in a video carry synthetic data only; check the visible text with `{cli} redact --check` before rendering.",
         "Look at stills of every scene before the full render; fix overflow, collisions and low contrast.",

@@ -623,8 +623,42 @@ def evaluate(command: str, cwd: str):
 
 # ------------------------------------------------------------------- main
 
+DELETE_REASON = re.compile(r"rm -r|rm -rf|-exec rm|-delete|git clean|unparseable command contains an rm")
+
+
+def reversible_delete_on() -> bool:
+    """On when NODARIS_REVERSIBLE_DELETE=1, or when the harness settings say "reversible_delete": true."""
+    if os.environ.get("NODARIS_REVERSIBLE_DELETE", "").lower() in ("1", "true", "yes", "on"):
+        return True
+    home = os.environ.get("NODARIS_HARNESS_HOME") or os.path.join(os.path.expanduser("~"), ".nodaris-harness")
+    try:
+        with open(os.path.join(home, "settings.json")) as fh:
+            return json.load(fh).get("reversible_delete") is True
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def trash_command() -> str:
+    import shutil as _sh
+    if _sh.which("nodaris-harness"):
+        return "`nodaris-harness trash <paths>` (restore with `nodaris-harness trash --restore <id>`)"
+    if os.path.exists("/usr/bin/trash"):
+        return "`/usr/bin/trash <paths>` (restore from the Finder Trash)"
+    return "`mkdir -p ~/.agent-trash && mv <paths> ~/.agent-trash/`"
+
+
 def emit(mode: str, tier: str, reason: str, target: str):
     hard = (tier == "deny") or (mode == "codex")
+    if not hard and reversible_delete_on() and DELETE_REASON.search(reason):
+        msg = (f"destructive-guard: {reason}. Reversible-delete mode is on, so this is not deleted permanently. "
+               f"Move it to the trash instead with {trash_command()}. For git clean, list the files with "
+               f"`git clean -n` and move those. If the person asked for a permanent delete, add `# guard:ok` at the "
+               f"end of the command.")
+        log_event(mode, "deny", "reversible", reason, target)
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                                 "permissionDecisionReason": msg}}))
+        print(msg, file=sys.stderr)
+        sys.exit(2)
     # Owner decision, 2026-09-24: the "ask" tier kept raising "Allow once" prompts they
     # could not make permanent. It now logs only; the hard denies still block.
     if not hard:

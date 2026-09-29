@@ -211,3 +211,22 @@ def test_a_guard_that_crashes_refuses_the_call_instead_of_letting_it_through(env
                              "session_id": "g", "cwd": env["_proj"]})
     assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
     assert "could not run" in out["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+def test_the_status_line_is_added_only_when_none_exists_and_removed_on_uninstall(tmp_path, monkeypatch):
+    import json
+    from nodaris_harness import hosts
+    monkeypatch.setenv("NODARIS_HARNESS_HOME", str(tmp_path / "home"))
+    cfg = tmp_path / "claude"
+    hosts.install("claude", config_dir=str(cfg), skills=False)
+    data = json.loads((cfg / "settings.json").read_text())
+    assert data["statusLine"]["command"].endswith("statusline")
+    hosts.uninstall("claude")
+    assert not (cfg / "settings.json").exists() or "statusLine" not in json.loads((cfg / "settings.json").read_text() or "{}")
+    (cfg / "settings.json").write_text(json.dumps({"model": "x"}))
+    hosts.install("claude", config_dir=str(cfg), skills=False)
+    hosts.uninstall("claude")
+    assert json.loads((cfg / "settings.json").read_text()) == {"model": "x"}
+    (cfg / "settings.json").write_text(json.dumps({"statusLine": {"type": "command", "command": "mine"}}))
+    hosts.install("claude", config_dir=str(cfg), skills=False)
+    assert json.loads((cfg / "settings.json").read_text())["statusLine"]["command"] == "mine"

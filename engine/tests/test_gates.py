@@ -133,3 +133,14 @@ def test_a_design_review_cannot_approve_open_serious_findings_and_goes_stale_on_
     assert gates.design_approved(str(p))
     p.write_text(GOOD_DESIGN + "\nOne more line.\n")
     assert not gates.design_approved(str(p))
+
+
+def test_the_first_edit_on_main_is_sent_back_once_with_the_branch_instruction(repo):
+    subprocess.run(["git", "-C", repo, "branch", "-M", "main"], check=True)
+    ev = {"hook_event_name": "PreToolUse", "session_id": "b1", "cwd": repo, "tool_name": "Edit",
+          "tool_input": {"file_path": os.path.join(repo, "a.py"), "old_string": "x = 1", "new_string": "x = 2"}}
+    out = dispatch.pre_tool(ev)
+    assert out["decision"] == "deny" and out["rule"] == "branch-rule" and "git switch -c" in out["reason"]
+    assert dispatch.pre_tool(ev)["decision"] == "allow"
+    subprocess.run(["git", "-C", repo, "switch", "-qc", "feat/x"], check=True)
+    assert dispatch.pre_tool(dict(ev, session_id="b2"))["decision"] == "allow"

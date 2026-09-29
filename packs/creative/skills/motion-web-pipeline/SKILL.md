@@ -109,6 +109,15 @@ Then `preview_start` the URL and actually drive it:
   effects are where this breaks
 - Toggle reduced motion and confirm the fallback is a *designed* state
 - State the real page weight. "It's optimised" is not a number
+- Check colour numerically against the locked reference. Take a screenshot of
+  the built hero and of the reference at the same size, extract the dominant
+  palette of each (for example a k-means or median-cut of 6-8 colours), and
+  compute CIE ΔE2000 between matched colours. Pass at a mean ΔE of 5 or less and
+  no single colour above 20; above that, the palette has drifted and the page will
+  not look like the reference however good the motion is. Report the numbers, not
+  "looks close". `python3 references/palette_delta_e.py reference.png built.png`
+  does this (Pillow, median-cut palette, ΔE2000; exits 2 on a fail). (Idea from
+  Design DNA's verification script, zanwei/design-dna, MIT.)
 
 Motion fails silently — a mistuned curve throws no error, it just feels cheap. If
 you have not looked at it, you do not know.

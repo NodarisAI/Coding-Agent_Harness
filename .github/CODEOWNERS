@@ -1,0 +1,9 @@
+# Every change needs a review from a maintainer.
+* @Lord-Somu
+
+# The policy, guards, approvals and redaction are security-sensitive.
+/rules/ @Lord-Somu
+/packs/core/vendor/guards/ @Lord-Somu
+/engine/nodaris_harness/policy.py @Lord-Somu
+/engine/nodaris_harness/redact.py @Lord-Somu
+/engine/nodaris_harness/security.py @Lord-Somu

@@ -64,3 +64,14 @@ def test_a_broken_animation_is_still_a_bug_fix():
 def test_autonomous_runs_need_a_spec_first():
     d = R.route("build the whole remittance screen overnight while I'm away")
     assert "autonomous" in d["overlays"] and "docs/specs/" in R.brief(d)
+
+
+def test_creative_requests_reach_the_creative_studio():
+    from nodaris_harness import router as r
+    for text in ["make a dark cinematic video of these car photos with music",
+                 "trim this clip and add captions for the video",
+                 "add a splash screen and a spinner to our CLI",
+                 "build a scroll-driven parallax hero with gsap"]:
+        d = r.route(text, use_profile=False)
+        assert d["playbook"] == "media", text
+        assert "creative-studio" in r.brief(d, "nodaris-harness")

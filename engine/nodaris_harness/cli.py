@@ -356,6 +356,47 @@ def cmd_security(a):
     return 0
 
 
+def cmd_trash(a):
+    from . import trash
+    if a.restore:
+        ok, msg = trash.restore(a.restore)
+        print(msg)
+        return 0 if ok else 1
+    if a.empty is not None:
+        print(f"Removed {trash.empty(a.empty)} trash entr(ies) older than {a.empty} day(s). This cannot be undone.")
+        return 0
+    if a.list or not a.paths:
+        for e in trash.entries()[:30]:
+            print(f"{e['id']}  {e['at']}  " + ", ".join(i["from"] for i in e["items"][:3]) + (" ..." if len(e["items"]) > 3 else ""))
+        return 0
+    entry, msg = trash.move(a.paths, os.getcwd())
+    print(msg)
+    return 0 if entry else 1
+
+
+def cmd_sync(a):
+    from . import sync
+    code, msg = sync.run(dry_run=a.dry_run, since_days=a.days)
+    print(msg)
+    return code
+
+
+def cmd_budget(a):
+    from . import capsule
+    if a.add:
+        print(f"Subagent budget is now {capsule.add_budget(a.add):,} tokens per session.")
+    st = capsule.load(a.session) if a.session else None
+    print(f"Subagent budget: {capsule.budget():,} tokens per session.")
+    if st:
+        print(f"Used in session {a.session}: {st.get('spent', 0):,} tokens across {len(st.get('runs', []))} subagent(s).")
+    return 0
+
+
+def cmd_onboard(a):
+    from . import onboard
+    return onboard.run_cli(a)
+
+
 def cmd_policy(a):
     pol = policy.load_policy()
     if a.explain:
@@ -395,6 +436,15 @@ def main(argv=None):
         if name == "doctor":
             s.add_argument("--live", action="store_true")
         s.set_defaults(fn=fn)
+    from . import onboard
+    s = sub.add_parser("onboard"); onboard.add_arguments(s); s.set_defaults(fn=cmd_onboard)
+    s = sub.add_parser("trash", help="move files to the harness trash instead of deleting them; restore later")
+    s.add_argument("paths", nargs="*"); s.add_argument("--restore"); s.add_argument("--list", action="store_true")
+    s.add_argument("--empty", type=int, metavar="DAYS"); s.set_defaults(fn=cmd_trash)
+    s = sub.add_parser("sync", help="share redacted lessons and counts with your team (opt-in)")
+    s.add_argument("--dry-run", action="store_true"); s.add_argument("--days", type=int, default=30); s.set_defaults(fn=cmd_sync)
+    s = sub.add_parser("budget", help="show or raise the subagent token budget")
+    s.add_argument("--add", type=int, default=0); s.add_argument("--session"); s.set_defaults(fn=cmd_budget)
     s = sub.add_parser("gitcheck"); s.add_argument("--stage", required=True, choices=["pre-commit", "pre-push"])
     s.add_argument("rest", nargs="*"); s.set_defaults(fn=cmd_gitcheck)
     s = sub.add_parser("policy"); s.add_argument("--explain"); s.set_defaults(fn=cmd_policy)
@@ -410,6 +460,10 @@ def main(argv=None):
     s.set_defaults(fn=cmd_tips)
     s = sub.add_parser("design"); s.add_argument("action", choices=["check", "review"]); s.add_argument("path")
     s.add_argument("--verdict"); s.add_argument("--findings"); s.add_argument("--reviewer"); s.set_defaults(fn=cmd_design)
+    s = sub.add_parser("watch", help="live token monitor and activity panel"); from . import monitor as _mon
+    _mon.add_arguments(s); s.set_defaults(fn=lambda a: _mon.watch(a))
+    s = sub.add_parser("statusline", help="one status line for Claude Code (reads its JSON on stdin)")
+    s.set_defaults(fn=lambda a: __import__("nodaris_harness.statusline", fromlist=["main"]).main(a))
     a = ap.parse_args(argv)
     return a.fn(a)
 
