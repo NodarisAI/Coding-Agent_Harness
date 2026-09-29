@@ -395,9 +395,16 @@ def uninstall(host):
                 new = None
         else:
             new = original
-            if _sha(cur) != f.get("installed_sha") and original is None:
-                kept.append(f"{path} was changed after install; left in place")
-                continue
+            if _sha(cur) != f.get("installed_sha"):
+                if original is None:
+                    kept.append(f"{path} was changed after install; left in place")
+                    continue
+                # The person edited the harness's copy; restore theirs and keep the edited one beside it.
+                aside = path + ".edited-after-install"
+                with open(aside, "wb") as fh:
+                    fh.write(cur)
+                kept.append(f"{path} was changed after install; the original is restored and the edited "
+                            f"version is saved as {aside}")
         if new is None or (not f["existed"] and not new.strip()):
             os.remove(path)
         else:

@@ -201,6 +201,21 @@ def test_git_hooks_install_and_block_a_protected_push(env, tmp_path):
     assert not os.path.exists(hook_file)
 
 
+def test_uninstall_keeps_edits_made_to_a_git_hook_after_install(env, tmp_path):
+    proj = env["_proj"]
+    hook_file = os.path.join(proj, ".git", "hooks", "pre-push")
+    with open(hook_file, "w") as fh:
+        fh.write("#!/bin/sh\necho team check\n")
+    hosts.install("git", project=proj)
+    with open(hook_file, "a") as fh:
+        fh.write("echo added after install\n")
+    out = hosts.uninstall("git")
+    assert open(hook_file).read() == "#!/bin/sh\necho team check\n"
+    saved = hook_file + ".edited-after-install"
+    assert "echo added after install" in open(saved).read()
+    assert any(saved in k for k in out["kept"])
+
+
 def test_a_guard_that_crashes_refuses_the_call_instead_of_letting_it_through(env, tmp_path):
     guards = tmp_path / "guards"
     guards.mkdir()
