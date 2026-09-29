@@ -2,6 +2,8 @@
 
 **Your coding agent, with the habits of a senior engineering team.** The harness installs into the coding agent you already use (Claude Code, Codex, Gemini CLI, Cursor or OpenCode) and changes how it works on every task: it plans before it edits, proves its work before it calls it done, keeps secrets and personal data where they belong, asks before anything it cannot undo, and remembers what went wrong last time. It is built for any software: web apps, services, scripts, websites and video. Teams that handle patient or payment data get extra checks on top.
 
+For a one-page tour, with the benchmark results against a plain coding agent, open [`docs/site/index.html`](docs/site/index.html) in a browser.
+
 ## What changes when you use it
 
 | You ask for | Plain agent | With the harness |
