@@ -4,7 +4,8 @@ The harness is a set of rules, checks and skills that sits inside the coding age
 
 ## What it does for you
 
-- Stops the agent from reading secrets, running destructive commands or skipping safety checks.
+- Stops the agent from reading secrets, writing a real credential into a file or command, running a destructive delete outside a trash folder, or skipping safety checks.
+- Sends the agent's first edit on `main`, `master`, `prod`, `production`, `staging` or `release` back with instructions to make a branch first; you can override by asking again.
 - Asks you to approve each push, deploy, message or other consequential action before it runs.
 - Replaces patient identifiers with realistic stand-ins before text leaves your machine.
 - Picks the right procedure for each request (bug fix, new feature, investigation, security check, release) so you do not have to know which step comes next.
@@ -26,8 +27,6 @@ The harness is a set of rules, checks and skills that sits inside the coding age
 3. Run the installer and answer its questions: `cd ~/.nodaris-harness-src && python3 install.py`
 
 The installer asks a few questions (your company, how you will use it, which agents to connect, how you want replies written), shows the exact changes for each agent, and installs only after you agree. It then runs the doctor to prove the install works. See [INSTALL.md](INSTALL.md) for every platform and for troubleshooting.
-
-Note: `install.py` and the onboarding questions are being built now. Until they land, install per agent with `bin/nodaris-harness install --host claude` (or `codex`, `gemini`, `cursor`, `opencode`, `git`).
 
 ## Let your coding agent install it
 
@@ -68,6 +67,11 @@ To undo: `bin/nodaris-harness uninstall --host claude` (once per agent). Files a
 | `nodaris-harness learn status` | Shows what the harness has learned about how you work, and lets you revert any change |
 | `nodaris-harness tips` | Suggestions drawn from your recent sessions |
 | `nodaris-harness policy --explain "git push origin dev"` | Shows how a command would be classed |
+| `nodaris-harness watch` (`--split` for a side pane in tmux) | Live panel: tokens burning, where they went, subagents, memories pulled, files touched |
+| `nodaris-harness statusline` | One-line version of the same numbers for Claude Code's status line; added at install only if you have none of your own, removed at uninstall |
+| `nodaris-harness trash <paths>` (`--list`, `--restore ID`, `--empty DAYS`) | Reversible delete: moves files to the harness trash instead of removing them |
+| `nodaris-harness budget --add N` | Raises your per-session subagent token budget |
+| `nodaris-harness sync --dry-run` | Shows what team sync would share, without sending it |
 
 If `nodaris-harness` is not on your path, run it as `~/.nodaris-harness-src/bin/nodaris-harness`.
 
@@ -83,6 +87,6 @@ Members of the Nodaris team can opt in to team sync, which shares only redacted 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the engine, hooks, policy and gates fit together
 - [rules/RULES.md](rules/RULES.md): the rules the agent follows
 - [docs/PRD.md](docs/PRD.md) and [docs/SPEC-v3.md](docs/SPEC-v3.md): requirements and specification
-- [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md), [docs/TEAM-DATA.md](docs/TEAM-DATA.md)
+- [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md), [docs/TEAM-DATA.md](docs/TEAM-DATA.md), [CHANGELOG.md](CHANGELOG.md)
 
 This repository is private. Licence terms are in [LICENSE](LICENSE); credits for studied and vendored work are in `packs/core/vendor/pstack/NOTICE.md` and `packs/core/vendor/SOURCE.json`.

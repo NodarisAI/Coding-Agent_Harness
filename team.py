@@ -234,7 +234,8 @@ def build(dest, packs=PACK_NAMES):
         raise SystemExit(f"build stopped, nothing installed: missing {missing}")
     json.dump(settings, open(dest / "settings.json", "w"), indent=1)
     launch = dest / "launch.sh"
-    launch.write_text(f'#!/bin/sh\n# Start Claude Code with the healthcare engineering harness.\nPATH="{dest / 'bin'}:$PATH" CLAUDE_CONFIG_DIR="{dest}" exec claude "$@"\n')
+    bin_dir = dest / "bin"
+    launch.write_text(f'#!/bin/sh\n# Start Claude Code with the healthcare engineering harness.\nPATH="{bin_dir}:$PATH" CLAUDE_CONFIG_DIR="{dest}" exec claude "$@"\n')
     launch.chmod(0o755)
     shutil.copy2(HERE / "INSTALL.md", dest / "README.md")
     for p in [*(dest / "hooks").iterdir(), *(dest / "engine").rglob("*"), *(dest / "rules").iterdir(), dest / "settings.json"]:

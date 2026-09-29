@@ -58,3 +58,14 @@ def test_a_bad_handle_is_refused(tmp_path, monkeypatch):
     monkeypatch.setenv("NODARIS_HARNESS_HOME", str(tmp_path / "h"))
     _settings(str(tmp_path / "h"), enabled=True, repo="acme/team-data", handle="../main")
     assert sync.run(dry_run=True)[0] == 1
+
+
+def test_lesson_keywords_are_redacted_and_odd_addresses_refused(tmp_path, monkeypatch):
+    home = str(tmp_path / "h")
+    monkeypatch.setenv("NODARIS_HARNESS_HOME", home)
+    _settings(home, enabled=True, repo="acme/team-data", handle="test.one")
+    memory.add(policy.home(), "When exporting", "Check the export", keywords=["555-867-5309", "export"], scope="user")
+    code, text = sync.run(dry_run=True)
+    assert code == 0 and "555-867-5309" not in text
+    _settings(home, enabled=True, repo="acme/team-data", handle="test.one", url="--upload-pack=touch /tmp/x")
+    assert sync.run()[0] == 1

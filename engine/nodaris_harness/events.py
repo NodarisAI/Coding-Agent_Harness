@@ -68,7 +68,8 @@ def parse(host, payload, event=None):
           "transcript_path": p.get("transcript_path"), "stop_hook_active": bool(p.get("stop_hook_active")),
           "source": p.get("source"), "last_assistant_message": p.get("last_assistant_message"),
           "tool_response": p.get("tool_response"), "prompt": p.get("prompt"), "error": p.get("error"),
-          "agent_id": p.get("agent_id"), "agent_type": p.get("agent_type")}
+          "agent_id": p.get("agent_id"), "agent_type": p.get("agent_type"),
+          "agent_transcript_path": p.get("agent_transcript_path")}
     name = event or p.get("hook_event_name") or p.get("event") or ""
     if host in ("claude", "codex"):
         ev["hook_event_name"] = name

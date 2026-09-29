@@ -256,8 +256,9 @@ def validate(s):
     if t["enabled"]:
         if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", t["repo"]):
             raise SettingsError("team_sync.repo", "must be owner/name when team sync is on")
-        if not re.fullmatch(r"[a-z0-9._-]{1,64}", t["handle"]):
-            raise SettingsError("team_sync.handle", "must be 1 to 64 lowercase letters, digits, dots, dashes or underscores")
+        if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,38}", t["handle"]):
+            raise SettingsError("team_sync.handle", "must start with a lowercase letter or digit and be at most 39 "
+                                                     "lowercase letters, digits, dots, dashes or underscores")
     p = s.get("plugins")
     if not isinstance(p, list):
         raise SettingsError("plugins", "must be a list")
@@ -413,11 +414,31 @@ def _search_github(company, run):
     return out
 
 
+_PLUGIN_ARG = re.compile(r"[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?(@[A-Za-z0-9_.-]+)?")
+
+
+def _allowed_install(cmd):
+    """Only `claude plugin marketplace add <owner/repo>` and `claude plugin install <name@marketplace> --scope user`,
+    whatever a registry or a marketplace file on disk says."""
+    try:
+        parts = shlex.split(cmd)
+    except ValueError:
+        return False
+    if parts[:4] == ["claude", "plugin", "marketplace", "add"] and len(parts) == 5:
+        return bool(_PLUGIN_ARG.fullmatch(parts[4]))
+    if parts[:3] == ["claude", "plugin", "install"] and len(parts) == 6 and parts[4:] == ["--scope", "user"]:
+        return bool(_PLUGIN_ARG.fullmatch(parts[3])) and not parts[3].startswith("-")
+    return False
+
+
 def install_plugin(sug, runner=None, stream=None):
     """Run a suggestion's exact commands one by one and report each exit code. Call only after the person said yes."""
     run = runner or subprocess.run
     s = stream or sys.stdout
     for cmd in sug["install"]:
+        if not _allowed_install(cmd):
+            s.write(f"Skipped, because it is not a plain plugin command: {cmd}\n")
+            return False
         s.write(f"Running: {cmd}\n")
         s.flush()
         try:

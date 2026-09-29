@@ -16,7 +16,8 @@ ENGINE_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__
 # Host: config file, hook shape, rules file, skills folder, and the degree of enforcement we can claim.
 CLAUDE_EVENTS = [("PreToolUse", "Bash|Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob|Task|Agent"), ("UserPromptSubmit", None),
                  ("PostToolUse", "Bash|Write|Edit|MultiEdit|NotebookEdit|Task|Agent|Skill"),
-                 ("PostToolUseFailure", "Bash|Write|Edit|MultiEdit|NotebookEdit"), ("Stop", None), ("PreCompact", None),
+                 ("PostToolUseFailure", "Bash|Write|Edit|MultiEdit|NotebookEdit"), ("Stop", None), ("SubagentStop", None),
+                 ("PreCompact", None),
                  ("SessionStart", None)]
 CODEX_EVENTS = [("PreToolUse", None), ("UserPromptSubmit", None), ("PostToolUse", None), ("Stop", None),
                 ("PreCompact", None), ("SessionStart", None)]
@@ -132,7 +133,8 @@ def _hooks_json(host, raw, root):
 def _harness_setting(key, default):
     try:
         with open(os.path.join(home(), "settings.json")) as fh:
-            return json.load(fh).get(key, default)
+            data = json.load(fh)
+        return data.get(key, default) if isinstance(data, dict) else default
     except (OSError, ValueError):
         return default
 

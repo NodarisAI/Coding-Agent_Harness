@@ -28,8 +28,6 @@ Follow these steps in order. Never skip the permission step.
 
    Show the person the planned changes, then run the same command without `--dry-run`. The answers JSON uses the keys the installer documents in `python3 install.py --help`; read that output rather than guessing key names.
 
-   `install.py` is being built. If it is not present yet, run `bin/nodaris-harness install --host <host> --dry-run`, show the diff, then run it without `--dry-run` for each agent the person chose.
-
 5. **Run the doctor and report.** Run `bin/nodaris-harness doctor --host <host>` for each connected agent. Report the result in plain sentences: which agents are connected, whether every check passed, how to undo it (`bin/nodaris-harness uninstall --host <host>`, or `python3 install.py --uninstall`), and anything that failed with its exact output.
 
 Rules while installing:

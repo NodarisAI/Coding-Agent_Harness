@@ -14,7 +14,12 @@ Three pieces, all driven by hooks so nobody has to remember them:
 The budget comes from settings.json (`subagent_budget_tokens`, set by plan during onboarding); the person can raise
 it at any time with `nodaris-harness budget --add N`.
 """
-import glob, json, os, re, subprocess, time
+import contextlib, glob, json, os, re, subprocess, time
+
+try:
+    import fcntl
+except ImportError:  # native Windows: no advisory locks; state writes are still atomic
+    fcntl = None
 
 from . import gates, policy
 
@@ -32,7 +37,8 @@ RULE_FILES = ["CLAUDE.md", "AGENTS.md", ".planning/STATE.md", "CONTRIBUTING.md"]
 def _settings():
     try:
         with open(os.path.join(policy.home(), "settings.json")) as f:
-            return json.load(f)
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         return {}
 
@@ -49,11 +55,84 @@ def _state_path(session):
 
 
 def load(session):
-    return gates._read(_state_path(session), {"runs": [], "spent": 0, "calls": {}})
+    state = gates._read(_state_path(session), {})
+    if not isinstance(state, dict):
+        state = {}
+    for key, empty in (("runs", []), ("spent", 0), ("calls", {}), ("charged", {})):
+        if not isinstance(state.get(key), type(empty)):
+            state[key] = empty
+    return state
 
 
 def _save(session, state):
     gates._write(_state_path(session), state)
+
+
+@contextlib.contextmanager
+def _locked(session):
+    """Parallel subagents return at the same moment; serialise the read-modify-write of the session state."""
+    if fcntl is None:
+        yield
+        return
+    with open(_state_path(session) + ".lock", "a") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+
+
+def agent_tokens(path):
+    """What a subagent spent, from its own transcript: new input, cache writes and output in full, cache reads at a
+    tenth (as they are billed). Each API message is logged more than once, so usage is counted once per message id."""
+    per_id = {}
+    try:
+        with open(path, errors="ignore") as fh:
+            for line in fh:
+                if '"usage"' not in line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    continue
+                msg = rec.get("message") if isinstance(rec, dict) else None
+                if isinstance(msg, dict) and isinstance(msg.get("usage"), dict):
+                    per_id[msg.get("id") or len(per_id)] = msg["usage"]
+    except OSError:
+        return None
+    total = 0
+    for u in per_id.values():
+        total += sum(int(u.get(k) or 0) for k in ("input_tokens", "cache_creation_input_tokens", "output_tokens"))
+        total += int(u.get("cache_read_input_tokens") or 0) // 10
+    return total
+
+
+def _agent_transcript(ev, agent_id):
+    if ev.get("agent_transcript_path"):
+        return ev["agent_transcript_path"]
+    main = ev.get("transcript_path") or ""
+    if not (main and agent_id):
+        return None
+    base = os.path.join(os.path.dirname(main), ev["session_id"], "subagents", f"agent-{agent_id}.jsonl")
+    return base if os.path.exists(base) else None
+
+
+def charge(session, agent_id, path, name="subagent"):
+    """Add a finished subagent's spend to the session once. Returns (tokens, new total)."""
+    tokens = agent_tokens(path) if path else None
+    with _locked(session):
+        state = load(session)
+        if agent_id and agent_id in state["charged"]:
+            return state["charged"][agent_id], state["spent"]
+        if tokens is None:
+            return None, state["spent"]
+        state["spent"] += tokens
+        if agent_id:
+            state["charged"][agent_id] = tokens
+        state["runs"].append({"name": str(name)[:60], "tokens": tokens, "at": time.time()})
+        state["runs"] = state["runs"][-200:]
+        _save(session, state)
+        return tokens, state["spent"]
 
 
 def _existing(cwd, patterns, limit):
@@ -127,17 +206,23 @@ def after_return(ev):
     """Checkpoint text after a subagent returns, and the running total."""
     session, ti = ev["session_id"], ev.get("tool_input") or {}
     resp = ev.get("tool_response") if isinstance(ev.get("tool_response"), dict) else {}
-    tokens = int(resp.get("totalTokens") or 0)
-    if not tokens and isinstance(resp.get("usage"), dict):
-        u = resp["usage"]
-        tokens = sum(int(u.get(k) or 0) for k in ("input_tokens", "output_tokens", "cache_creation_input_tokens"))
-    state = load(session)
-    state["spent"] = state.get("spent", 0) + tokens
     name = str(ti.get("description") or ti.get("subagent_type") or "subagent")[:60]
-    state["runs"].append({"name": name, "tokens": tokens, "tools": resp.get("totalToolUseCount"),
-                          "ms": resp.get("totalDurationMs"), "status": resp.get("status"), "at": time.time()})
-    state["runs"] = state["runs"][-200:]
-    _save(session, state)
+    agent_id = str(resp.get("agentId") or "")
+    if str(resp.get("status") or "") == "async_launched":
+        return (f"The subagent \"{name}\" is running in the background. Its tokens are charged to the session budget "
+                f"when it finishes; check its work then, before building on it.")
+    tokens, spent = charge(session, agent_id, _agent_transcript(ev, agent_id), name)
+    if tokens is None:
+        # No transcript to read: fall back to the size of its final context, and say that it is an estimate.
+        tokens = int(resp.get("totalTokens") or 0)
+        with _locked(session):
+            state = load(session)
+            state["spent"] += tokens
+            if agent_id:
+                state["charged"][agent_id] = tokens
+            _save(session, state)
+            spent = state["spent"]
+    state = {"spent": spent}
     cap = budget()
     pct = int(100 * state["spent"] / cap) if cap else 0
     changed = _changed_files(ev.get("cwd") or ".")
@@ -158,15 +243,23 @@ def after_return(ev):
     return "\n".join(lines)
 
 
+def on_subagent_stop(ev):
+    """SubagentStop: charge what the subagent spent (covers background subagents too)."""
+    agent_id = str(ev.get("agent_id") or "")
+    charge(ev["session_id"], agent_id, _agent_transcript(ev, agent_id), ev.get("agent_type") or "subagent")
+    return {"decision": "allow"}
+
+
 def pulse(ev):
     """Inside a subagent: a reminder every PULSE calls and a stop at TOOL_CAP. Returns an outcome or None."""
     agent = ev.get("agent_id")
     if not agent:
         return None
-    state = load(ev["session_id"])
-    n = state.setdefault("calls", {}).get(agent, 0) + 1
-    state["calls"][agent] = n
-    _save(ev["session_id"], state)
+    with _locked(ev["session_id"]):
+        state = load(ev["session_id"])
+        n = int(state["calls"].get(agent, 0) or 0) + 1
+        state["calls"][agent] = n
+        _save(ev["session_id"], state)
     if n >= TOOL_CAP:
         return {"decision": "deny", "rule": "subagent-cap",
                 "reason": (f"This subagent has made {n} tool calls, the cap for one subagent. Stop now and return what "

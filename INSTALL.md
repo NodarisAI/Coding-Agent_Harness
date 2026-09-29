@@ -31,13 +31,6 @@
 
    In the Claude Code desktop app you can also run `nodaris-harness onboard`, or let the harness ask the same questions as clickable choices at your first session.
 
-   `install.py` and `onboard` are being built now and are described here, not yet tested. Until they land, install each agent directly:
-
-   ```
-   bin/nodaris-harness install --host claude --dry-run   # review the diff
-   bin/nodaris-harness install --host claude
-   ```
-
    Hosts: `claude`, `codex`, `gemini`, `cursor`, `opencode`, `git`.
 
 3. Verify:
@@ -56,13 +49,13 @@ git pull
 python3 install.py --reconfigure
 ```
 
-`--reconfigure` asks the setup questions again with your previous answers filled in. Before the installer lands, re-run `bin/nodaris-harness install --host H` after pulling.
+`--reconfigure` asks the setup questions again with your previous answers filled in.
 
 ## Uninstall
 
 ```
-python3 install.py --uninstall            # every connected agent (in progress)
-bin/nodaris-harness uninstall --host claude   # one agent, available now
+python3 install.py --uninstall              # every connected agent
+bin/nodaris-harness uninstall --host claude   # one agent
 ```
 
 Uninstall restores each changed file from the backup taken at install. Your harness home, `~/.nodaris-harness`, is kept so recorded sessions and lessons are not lost; delete it yourself if you want them gone.

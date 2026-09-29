@@ -560,6 +560,23 @@ def ask(question, default="", stream=None, required=False):
 def confirm(question, default=True, stream=None):
     s = _out(stream)
     hint = "(Y/n)" if default else "(y/N)"
+    if stream is None and can_prompt():
+        # One key, no Enter needed; arrow keys and other escape sequences are ignored instead of echoed.
+        s.write(bold(question, s) + f" {hint} ")
+        s.flush()
+        with cbreak() as fd:
+            if fd is not None:
+                while True:
+                    k = read_key(fd)
+                    if k in ("y", "Y") or (k == "enter" and default):
+                        s.write("Yes\n")
+                        s.flush()
+                        return True
+                    if k in ("n", "N") or (k == "enter" and not default):
+                        s.write("No\n")
+                        s.flush()
+                        return False
+        s.write("\n")
     for _ in range(5):
         try:
             raw = _read_line(bold(question, s) + f" {hint} ", s).strip().lower()

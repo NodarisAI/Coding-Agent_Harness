@@ -1,6 +1,6 @@
 # Team data: what `nodaris-harness sync` shares
 
-Team sync is being built. This page describes the agreed design; it has not been tested yet.
+`nodaris-harness sync` (`--dry-run` shows exactly what would be shared, without sending it; `--days N` limits how far back it looks) pushes a bundle to your own branch. It never creates the team data repository — a maintainer creates that first.
 
 ## Who it is for, and consent
 

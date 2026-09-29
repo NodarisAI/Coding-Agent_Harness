@@ -71,7 +71,8 @@ AGENT_TOOLS = ("Task", "Agent")
 def _setting(key, default):
     try:
         with open(os.path.join(policy.home(), "settings.json")) as f:
-            return json.load(f).get(key, default)
+            data = json.load(f)
+        return data.get(key, default) if isinstance(data, dict) else default
     except (OSError, ValueError):
         return default
 
@@ -79,7 +80,7 @@ def _setting(key, default):
 def pre_tool(ev):
     try:
         beat = capsule.pulse(ev)
-    except (OSError, ValueError):
+    except Exception:  # noqa: BLE001  guidance must never block on its own failure
         beat = None
     if beat and beat["decision"] == "deny":
         return beat
@@ -93,8 +94,8 @@ def _pre_tool(ev):
     if ev["tool_name"] in AGENT_TOOLS and not ev.get("agent_id"):
         try:
             return capsule.before_launch(ev)
-        except (OSError, ValueError, TypeError):
-            return {"decision": "allow"}  # the capsule is guidance; a broken one must not stop the launch
+        except Exception:  # noqa: BLE001  the capsule is guidance; a broken one must not stop the launch
+            return {"decision": "allow"}
     payload = events.claude_payload(ev)
     for name, tools in GUARDS:
         if ev["tool_name"] in tools:
@@ -106,8 +107,11 @@ def _pre_tool(ev):
             if res[0] == 2:
                 why = (_json(res[1]).get("hookSpecificOutput") or {}).get("permissionDecisionReason") or res[2].strip()
                 return {"decision": "deny", "rule": name.replace(".py", ""), "reason": why}
-    if ev["tool_name"] in EDIT_TOOLS and not ev.get("agent_id") and _setting("branch_rule", True):
-        why = gates.branch_check(ev)
+    if ev["tool_name"] in EDIT_TOOLS and _setting("branch_rule", True):
+        try:
+            why = gates.branch_check(ev)
+        except Exception:  # noqa: BLE001
+            why = None
         if why:
             return {"decision": "deny", "rule": "branch-rule", "reason": why}
     pol = policy.load_policy()
@@ -165,7 +169,10 @@ def post_tool(ev):
             if res:
                 parts.append(_context_of(res[1]))
     if ev["tool_name"] in AGENT_TOOLS and ev["hook_event_name"] == "PostToolUse" and not ev.get("agent_id"):
-        parts.append(capsule.after_return(ev))
+        try:
+            parts.append(capsule.after_return(ev))
+        except Exception:  # noqa: BLE001
+            pass
     if ev["tool_name"] == "Skill" and ev["hook_event_name"] == "PostToolUse":
         signals.record(ev["session_id"], "skill", name=str((ev.get("tool_input") or {}).get("skill") or "")[:60])
     if ev["tool_name"] in EDIT_TOOLS and ev["hook_event_name"] == "PostToolUse":
@@ -206,6 +213,11 @@ def handle(ev):
             trajectory.record(ev, {"decision": "allow"})
             compact.snapshot(ev["session_id"])
             return {"decision": "allow"}
+        elif name == "SubagentStop":
+            try:
+                outcome = capsule.on_subagent_stop(ev)
+            except Exception:  # noqa: BLE001
+                outcome = {"decision": "allow"}
         elif name == "SessionStart":
             ctx = compact.restore(ev["session_id"]) if ev.get("source") in ("compact", "resume") else ""
             learned = profile.summary() if ev.get("source") in (None, "startup", "clear") else ""

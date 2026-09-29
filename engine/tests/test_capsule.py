@@ -66,3 +66,61 @@ def test_a_subagent_gets_a_pulse_and_is_stopped_at_the_cap(home):
     assert all(o["decision"] == "allow" for o in outs[:-1])
     other = dict(ev, agent_id="ag2")
     assert dispatch.pre_tool(other)["decision"] == "allow"
+
+
+def _agent_file(home, session, agent_id, turns):
+    d = home / "proj" / session / "subagents"
+    d.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for i, (inp, cread, out) in enumerate(turns):
+        rec = {"type": "assistant", "message": {"id": f"m{i}", "usage": {"input_tokens": inp, "cache_read_input_tokens": cread,
+                                                                     "cache_creation_input_tokens": 0, "output_tokens": out}}}
+        rows += [json.dumps(rec), json.dumps(rec)]          # Claude Code logs each message more than once
+    (d / f"agent-{agent_id}.jsonl").write_text("\n".join(rows) + "\n")
+    return str(home / "proj" / f"{session}.jsonl")
+
+
+def test_spend_is_read_from_the_subagent_transcript_once_per_message(home):
+    main = _agent_file(home, "s9", "ag9", [(1000, 50_000, 200), (500, 60_000, 300)])
+    ret = dict(_launch(home, session="s9"), hook_event_name="PostToolUse", transcript_path=main,
+               tool_response={"agentId": "ag9", "totalTokens": 166_000, "status": "completed"})
+    ctx = dispatch.post_tool(ret)["context"]
+    assert "13,000 tokens" in ctx                          # 1,000+200+500+300 + (50,000+60,000)/10
+    dispatch.post_tool(ret)
+    assert capsule.load("s9")["spent"] == 13_000           # charged once, whatever repeats
+
+
+def test_a_background_subagent_is_charged_when_it_stops(home):
+    main = _agent_file(home, "s8", "bg1", [(2000, 0, 1000)])
+    launch = dict(_launch(home, session="s8"), hook_event_name="PostToolUse", transcript_path=main,
+                  tool_response={"agentId": "bg1", "status": "async_launched"})
+    assert "running in the background" in dispatch.post_tool(launch)["context"]
+    assert capsule.load("s8")["spent"] == 0
+    stop = {"hook_event_name": "SubagentStop", "session_id": "s8", "cwd": str(home / "app"), "agent_id": "bg1",
+            "agent_transcript_path": str(home / "proj" / "s8" / "subagents" / "agent-bg1.jsonl")}
+    assert dispatch.handle(stop)["decision"] == "allow"
+    assert capsule.load("s8")["spent"] == 3000
+
+
+def test_parallel_returns_lose_no_tokens(home):
+    import threading
+    for i in range(40):
+        _agent_file(home, "s7", f"p{i}", [(1000, 0, 0)])
+    main = str(home / "proj" / "s7.jsonl")
+
+    def one(i):
+        capsule.charge("s7", f"p{i}", str(home / "proj" / "s7" / "subagents" / f"agent-p{i}.jsonl"))
+    threads = [threading.Thread(target=one, args=(i,)) for i in range(40)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert capsule.load("s7")["spent"] == 40_000 and main
+
+
+def test_a_broken_settings_file_never_blocks_work(home):
+    os.makedirs(os.environ["NODARIS_HARNESS_HOME"], exist_ok=True)
+    with open(os.path.join(os.environ["NODARIS_HARNESS_HOME"], "settings.json"), "w") as f:
+        f.write("[]")
+    assert dispatch.handle(_launch(home, session="s6"))["decision"] == "allow"
+    ev = {"hook_event_name": "PreToolUse", "session_id": "s6", "cwd": str(home / "app"), "tool_name": "Write",
+          "tool_input": {"file_path": str(home / "app" / "x.txt"), "content": "x"}}
+    assert dispatch.handle(ev)["decision"] == "allow"

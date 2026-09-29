@@ -14,7 +14,8 @@ import collections, datetime, json, os, re, subprocess
 
 from . import memory, policy, profile, redact, signals
 
-HANDLE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,38}$")
+HANDLE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,38}$")   # onboarding validates handles with this same pattern
+URL = re.compile(r"^(https://[\w.-]+/[\w.-]+/[\w.-]+?(\.git)?|/[\w./-]+)$")
 
 
 def settings():
@@ -41,7 +42,8 @@ def bundle(since_days=30):
             except ValueError:
                 continue
             lessons.append({k: _clean(l.get(k)) for k in ("when", "do", "dont", "why")} |
-                           {"id": l.get("id"), "keywords": l.get("keywords", [])[:12], "verified": bool(l.get("verified")),
+                           {"id": l.get("id"), "keywords": [_clean(k)[:60] for k in (l.get("keywords") or [])[:12]],
+                            "verified": bool(l.get("verified")),
                             "created": l.get("created")})
     changes = [{k: h.get(k) for k in ("id", "field", "value", "by", "at", "reverted")} |
                {"evidence_count": len(h.get("evidence") or []) if isinstance(h.get("evidence"), list) else h.get("evidence")}
@@ -57,8 +59,14 @@ def bundle(since_days=30):
             "counts": dict(sorted(counts.items()))}
 
 
+GIT_ENV = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+
+
 def _git(cwd, *args, timeout=120):
-    r = subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, timeout=timeout)
+    try:
+        r = subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, timeout=timeout, env=GIT_ENV)
+    except subprocess.TimeoutExpired:
+        return 1, f"git {args[0]} took longer than {timeout} seconds"
     return r.returncode, (r.stdout + r.stderr).strip()
 
 
@@ -78,8 +86,15 @@ def run(dry_run=False, since_days=30):
     work = os.path.join(policy.home(), "team-data")
     branch = f"team/{handle}"
     if not os.path.isdir(os.path.join(work, ".git")):
-        url = team.get("url") or f"https://github.com/{repo}.git"
-        if subprocess.run(["git", "clone", "--quiet", url, work], capture_output=True, text=True, timeout=300).returncode:
+        url = str(team.get("url") or f"https://github.com/{repo}.git")
+        if not URL.match(url):
+            return 1, "The team data address must be an https:// repository address."
+        try:
+            failed = subprocess.run(["git", "clone", "--quiet", "--", url, work], capture_output=True, text=True,
+                                    timeout=300, env=GIT_ENV).returncode
+        except subprocess.TimeoutExpired:
+            failed = True
+        if failed:
             return 1, (f"Could not clone {repo}. Check that you have access to it (a maintainer creates it and adds "
                        f"you), then run this again.")
     _git(work, "fetch", "--quiet", "origin")

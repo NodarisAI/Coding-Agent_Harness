@@ -144,3 +144,15 @@ def test_the_first_edit_on_main_is_sent_back_once_with_the_branch_instruction(re
     assert dispatch.pre_tool(ev)["decision"] == "allow"
     subprocess.run(["git", "-C", repo, "switch", "-qc", "feat/x"], check=True)
     assert dispatch.pre_tool(dict(ev, session_id="b2"))["decision"] == "allow"
+
+
+def test_the_branch_rule_can_be_switched_off(repo, monkeypatch):
+    import json as _j
+    subprocess.run(["git", "-C", repo, "branch", "-M", "main"], check=True)
+    home = os.environ["NODARIS_HARNESS_HOME"]
+    os.makedirs(home, exist_ok=True)
+    with open(os.path.join(home, "settings.json"), "w") as f:
+        _j.dump({"branch_rule": False}, f)
+    ev = {"hook_event_name": "PreToolUse", "session_id": "b3", "cwd": repo, "tool_name": "Edit",
+          "tool_input": {"file_path": os.path.join(repo, "a.py"), "old_string": "x = 1", "new_string": "x = 2"}}
+    assert dispatch.pre_tool(ev)["decision"] == "allow"

@@ -623,7 +623,39 @@ def evaluate(command: str, cwd: str):
 
 # ------------------------------------------------------------------- main
 
-DELETE_REASON = re.compile(r"rm -r|rm -rf|-exec rm|-delete|git clean|unparseable command contains an rm")
+# Reversible-delete mode: recursive deletes go to a restorable trash instead. Single files, scratch and temp
+# folders, and regenerable build folders (node_modules, dist, build, caches) are left alone.
+REVERSIBLE_FORMS = [
+    (re.compile(r"\bfind\b(?![^;&|]*\s-empty\b)[^;&|]*\s-(?:delete|exec(?:dir)?\s+rm)\b"), "find with -delete"),
+    (re.compile(r"\bgit\s+(?:-[Cc]\s+\S+\s+)*clean\b[^;&|]*-[a-zA-Z]*f"), "git clean"),
+    (re.compile(r"\b(?:python[\d.]*|node|ruby|perl|deno|bun)\b[^;&|]*?(?:\s-[ce]\s|\s-\s*<<)[\s\S]*"
+                r"\b(?:shutil\.rmtree|rmtree|rmSync|fs\.rm|fs\.promises\.rm|remove_dir_all|FileUtils\.rm_rf?)\b"),
+     "a recursive delete inside a script"),
+    (re.compile(r"\bRemove-Item\b[^;&|]*-Recurse", re.I), "Remove-Item -Recurse"),
+]
+
+
+def reversible_hit(command: str, cwd: str):
+    for rx, what in REVERSIBLE_FORMS:
+        if rx.search(command):
+            return what
+    tokens = tokenize(command)
+    for seg in (split_segments(tokens) if tokens is not None else []):
+        seg = strip_wrapper(seg)
+        if not seg or basename_cmd(seg[0]) not in ("rm", "xargs"):
+            continue
+        if basename_cmd(seg[0]) == "xargs":
+            if "rm" in [basename_cmd(t) for t in seg[1:]] and any(t.startswith("-") and "r" in t.lower() for t in seg[1:]):
+                return "xargs rm -r"
+            continue
+        flags = [t for t in seg[1:] if t.startswith("-")]
+        if not any(("r" in f.lower() and not f.startswith("--")) or f == "--recursive" for f in flags):
+            continue
+        targets = [t for t in seg[1:] if not t.startswith("-")]
+        risky = [t for t in targets if not (is_safe_tmp_path(resolve_path(t, cwd)) or is_safe_relative_build_dir(t))]
+        if risky or not targets:
+            return "rm -r " + (risky[0] if risky else "(targets from input)")
+    return None
 
 
 def reversible_delete_on() -> bool:
@@ -633,8 +665,9 @@ def reversible_delete_on() -> bool:
     home = os.environ.get("NODARIS_HARNESS_HOME") or os.path.join(os.path.expanduser("~"), ".nodaris-harness")
     try:
         with open(os.path.join(home, "settings.json")) as fh:
-            return json.load(fh).get("reversible_delete") is True
-    except (OSError, ValueError, AttributeError):
+            data = json.load(fh)
+        return isinstance(data, dict) and data.get("reversible_delete") is True
+    except (OSError, ValueError):
         return False
 
 
@@ -647,18 +680,19 @@ def trash_command() -> str:
     return "`mkdir -p ~/.agent-trash && mv <paths> ~/.agent-trash/`"
 
 
+def emit_reversible(mode: str, what: str, target: str):
+    msg = (f"destructive-guard: {what}. Reversible-delete mode is on, so nothing is deleted permanently by an agent. "
+           f"Move the files to the trash instead with {trash_command()}. For git clean, list the files with "
+           f"`git clean -n` and move those. If the person wants a permanent delete, they run the command themselves.")
+    log_event(mode, "deny", "reversible", what, target)
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                             "permissionDecisionReason": msg}}))
+    print(msg, file=sys.stderr)
+    sys.exit(2)
+
+
 def emit(mode: str, tier: str, reason: str, target: str):
     hard = (tier == "deny") or (mode == "codex")
-    if not hard and reversible_delete_on() and DELETE_REASON.search(reason):
-        msg = (f"destructive-guard: {reason}. Reversible-delete mode is on, so this is not deleted permanently. "
-               f"Move it to the trash instead with {trash_command()}. For git clean, list the files with "
-               f"`git clean -n` and move those. If the person asked for a permanent delete, add `# guard:ok` at the "
-               f"end of the command.")
-        log_event(mode, "deny", "reversible", reason, target)
-        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
-                                                 "permissionDecisionReason": msg}}))
-        print(msg, file=sys.stderr)
-        sys.exit(2)
     # Owner decision, 2026-09-24: the "ask" tier kept raising "Allow once" prompts they
     # could not make permanent. It now logs only; the hard denies still block.
     if not hard:
@@ -694,6 +728,10 @@ def main():
         if not command.strip():
             sys.exit(0)
         hit, override, suppressed = evaluate(command, cwd)
+        if not override and (hit is None or hit[0] != "deny") and reversible_delete_on():
+            why = reversible_hit(command, cwd)
+            if why:
+                emit_reversible(mode, why, command)
         if suppressed:
             log_event(mode, "override", suppressed[0], f"guard:ok override — {suppressed[1]}", command)
             sys.exit(0)

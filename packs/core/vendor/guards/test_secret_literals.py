@@ -34,6 +34,11 @@ class Literals(unittest.TestCase):
                      "pem = \"-----BEGIN RSA " + "PRIVATE KEY-----\\nMIIEpAIBAAKCAQEA\\n-----END RSA PRIVATE KEY-----\""):
             self.assertEqual(self.deny("Write", {"file_path": "/x/a.py", "content": text}), (False, None), text[:12])
 
+    def test_a_private_key_in_a_test_fixture_passes(self):
+        pem = "-----BEGIN RSA " + "PRIVATE KEY-----\\n" + "\\n".join([ALNUM * 2] * 6) + "\\n"
+        self.assertEqual(self.deny("Write", {"file_path": "/x/tests/fixtures/rsa_fixture.txt", "content": pem}), (False, None))
+        self.assertEqual(self.deny("Write", {"file_path": "/x/deploy/config.txt", "content": pem}), (True, "secret-literal"))
+
     def test_the_value_is_never_echoed(self):
         value = fake("gh" + "p_", 36)
         payload = {"tool_name": "Write", "tool_input": {"file_path": "/x/a.py", "content": value}, "cwd": HERE}

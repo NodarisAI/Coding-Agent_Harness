@@ -1200,6 +1200,10 @@ def decide(tool: str, tool_input: dict, cwd: str):
     ti = tool_input if isinstance(tool_input, dict) else {}
     if tool in ("Bash", "Write", "Edit", "MultiEdit", "NotebookEdit"):
         kind = literal_kind(written_text(tool, ti))
+        fixture = re.search(r"(^|/)(tests?|fixtures?|testdata|__fixtures__)/|(^|/)test_[^/]*$|_test\.|\.test\.|\.spec\.",
+                            str(ti.get("file_path") or ""))
+        if kind == "private key" and fixture:
+            kind = None
         if kind:
             LAST_LITERAL["kind"] = kind
             return True, "secret-literal"

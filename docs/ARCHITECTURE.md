@@ -49,9 +49,13 @@ Exact payload shapes are in `docs/HOST-CONTRACTS.md`. `install` writes a diff, a
 
 `nodaris-harness policy --explain "CMD"` shows how a command is classed.
 
+The secret guard (`packs/core/vendor/guards/secret-guard.py`) also refuses a literal credential value — GitHub, GitLab, Slack, Stripe secret, Google, AWS, Anthropic, OpenAI and OpenRouter keys, and private-key blocks — written into a file or a command; the value is never echoed to the log. A placeholder such as `ghp_EXAMPLE` passes.
+
 ## Router, playbooks and overlays
 
 `router.py` matches each prompt by rules, not a model, to one playbook: investigate, bug-fix, feature, new-app, rcm-data, security-check, plan, refactor, perf, ship or media. Overlays add domain rules on top: autonomous, rcm, phi, tenant-money, auth, hardening and model-feature. The brief ends with a risk level and the gates that will apply. The route is kept for the session and recorded, so routing decisions become labelled examples.
+
+A request about video, motion, animation, splash screens, ffmpeg, captions, scroll motion or 3D routes to `media`, which points the agent at the `creative-studio` skill so it follows the pack's method instead of improvising. The creative pack (nine skills, listed in `packs/creative/README.md`) is separate from the healthcare pack.
 
 ## Gates
 
@@ -73,13 +77,23 @@ Each end-of-turn gate sends the agent back at most once per session, so a gate c
 
 `packs/core` (always): guards, hooks, tools (`scan`, `redact`, trust receipt), the security-reviewer agent and the general skills. `packs/healthcare`: healthcare domain rules and the new-app blueprint. `packs/creative`: motion, WebGL and product-film skills. The installer selects packs by how the person will use the harness.
 
-## Subagent capsule and checkpoints (being built)
+## Subagent capsule and checkpoints
 
-Every subagent receives the orchestrator's brief, the design system and the rules automatically, so it does not start blind. The orchestrator checkpoints its progress and works within a per-session subagent token budget set by the person's plan. Described here; not yet tested.
+Every `Task`/`Agent` launch gets the orchestrator's frame appended to its prompt: the session's route, the design record and design-system files the work must follow, the repository rules and the reporting contract. The subagent reads the files itself; the capsule carries paths, never file contents. When a subagent returns, the orchestrator gets a checkpoint with its token cost, the session total against the budget, and what to review before accepting the work.
 
-## Other work being built
+The per-session subagent token budget is set by plan at onboarding (pro 150k, max 600k, team 400k, api 300k tokens). A launch past the budget is refused with instructions; `nodaris-harness budget --add N` raises it. Inside a running subagent, a reminder is added every 25 tool calls and it is told to stop and hand back what it has at 90.
 
-`install.py` onboarding, `nodaris-harness onboard`, company plugin discovery (known registry first, then search, never installed without a yes), the branch rule (the agent creates a branch before editing on `main` or `master`) and `nodaris-harness sync` ([TEAM-DATA.md](TEAM-DATA.md)). Described, not tested.
+## Branch rule
+
+The first edit on `main`, `master`, `prod`, `production`, `staging` or `release` is sent back once (`gates.branch_check`, wired in `dispatch.py`) with the `git switch -c feat/<topic>` instruction (or `fix/`, `docs/`, `chore/`). If the person asked to work on that branch directly, asking again lets the edit through. Controlled by the `branch_rule` setting (on by default).
+
+## Reversible delete
+
+`nodaris-harness trash <paths>` moves files into `<harness home>/trash/<id>/` instead of deleting them; `--list` shows entries, `--restore ID` puts one back, `--empty DAYS` is the only permanent step and only removes entries older than that. With the `reversible_delete` setting on (the default for new installs), the destructive-command guard refuses a recursive delete outside scratch and build-cache folders and points to the trash command; `# guard:ok` at the end of the command keeps a permanent delete the person asked for.
+
+## Live panel and status line
+
+`nodaris-harness watch` (`--split` for a side pane in tmux) tails the active session transcript read-only and shows a flame header that follows the burn rate, totals against the budget, where the tokens went, subagents, memories pulled and files touched. It never prints file contents, prompts or command output. `nodaris-harness statusline` is a one-line version of the same numbers for Claude Code's own status line; `install.py` wires it into `settings.json` only when the person has no status line of their own, and removes it at uninstall.
 
 ## Data locations
 

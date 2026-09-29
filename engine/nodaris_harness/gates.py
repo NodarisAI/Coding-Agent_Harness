@@ -42,7 +42,7 @@ def _read(path, default):
 
 
 def _write(path, data):
-    tmp = path + ".tmp"
+    tmp = f"{path}.{os.getpid()}.{time.monotonic_ns()}.tmp"
     with open(tmp, "w") as f:
         json.dump(data, f)
     os.replace(tmp, path)
