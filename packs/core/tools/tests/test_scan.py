@@ -18,8 +18,20 @@ def run(path):
     return subprocess.run([sys.executable, str(SCAN), str(path)], capture_output=True, text=True, timeout=600)
 
 
+@pytest.mark.skipif(not shutil.which("gitleaks"), reason="gitleaks not installed")
 def test_nothing_changed_is_clean(tmp_path):
     assert run(repo(tmp_path)).returncode == 0
+
+
+def test_no_scanner_installed_fails_closed(tmp_path):
+    r = repo(tmp_path)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "git").symlink_to(shutil.which("git"))
+    env = {"PATH": str(bin_dir), "HOME": str(tmp_path)}
+    out = subprocess.run([sys.executable, str(SCAN), str(r)], capture_output=True, text=True, timeout=120, env=env)
+    assert out.returncode == 2
+    assert "ran nothing" in out.stdout and "gitleaks" in out.stdout
 
 
 @needs
