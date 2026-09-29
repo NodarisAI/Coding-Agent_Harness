@@ -40,6 +40,35 @@ def bin_path(root=None):
     return os.path.join(root or ENGINE_ROOT, "bin", "nodaris-harness")
 
 
+COMMANDS = ("nodaris", "nodaris-harness")
+
+
+def link_commands(home=None, dry_run=False):
+    """Put nodaris and nodaris-harness on the PATH as links in ~/.local/bin. Returns the links made. A file the
+    person already has under either name is left alone."""
+    local = os.path.join(home or os.path.expanduser("~"), ".local", "bin")
+    target, made = bin_path(), []
+    for name in COMMANDS:
+        link = os.path.join(local, name)
+        if os.path.islink(link) and os.path.realpath(link) == os.path.realpath(target):
+            continue
+        if os.path.lexists(link):
+            continue
+        if not dry_run:
+            os.makedirs(local, exist_ok=True)
+            os.symlink(target, link)
+        made.append(link)
+    return made
+
+
+def unlink_commands(home=None):
+    local = os.path.join(home or os.path.expanduser("~"), ".local", "bin")
+    for name in COMMANDS:
+        link = os.path.join(local, name)
+        if os.path.islink(link) and os.path.realpath(link) == os.path.realpath(bin_path()):
+            os.unlink(link)
+
+
 def hook_cmd(host, event=None, root=None):
     cmd = f'"{python()}" "{bin_path(root)}" hook --host {host}'
     return cmd + (f" --event {event}" if event else "")

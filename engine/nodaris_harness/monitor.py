@@ -40,6 +40,8 @@ AGENT_BUDGETS = {"pro": 150000, "max": 600000, "team": 400000, "api": 300000}
 AMBER = (245, 180, 80)
 RED = (235, 70, 50)
 GREEN = (45, 212, 191)
+# Decorative colour is the Nodaris teal ramp; amber and red are kept only for budget warnings and failed agents.
+TEAL_DEEP, TEAL, TEAL_LIGHT = (6, 122, 104), (15, 212, 180), (94, 234, 212)
 TITLE_RE = re.compile(r"^\s*[-*]\s+\*\*(.+?)\*\*")
 NOTE_RE = re.compile(r"<task-notification>(.*?)</task-notification>", re.S)
 SAFE_WORD = re.compile(r"^[A-Za-z0-9_.:/@+-]{1,24}$")
@@ -604,15 +606,15 @@ def sections(stats, cv, width, cwd=None, unicode=True):
     bw = max(4, min(14, width // 4))
     w_lines = []
     for label, n in where:
-        w_lines.append(pad(label, max(8, width - bw - 8)) + " " + cv.seg(bar(n / top, bw, u), AMBER) + " " + fmt_tokens(n).rjust(6))
+        w_lines.append(pad(label, max(8, width - bw - 8)) + " " + cv.seg(bar(n / top, bw, u), TEAL) + " " + fmt_tokens(n).rjust(6))
     a_lines = []
     for a in list(stats.agents.values())[-6:][::-1]:
         st = a.get("status") or ""
-        rgb = GREEN if st == "completed" else AMBER if st in ("running", "background") else RED
+        rgb = GREEN if st == "completed" else TEAL_LIGHT if st in ("running", "background") else RED
         a_lines.append(pad(a["name"], max(8, width - 26)) + " " + cv.seg(st[:10].ljust(10), rgb) + " "
                        + fmt_tokens(a.get("tokens")).rjust(6) + " " + fmt_ms(a.get("ms")).rjust(6))
     m_lines = [("- " if not u else "• ") + t for t in stats.memories[-6:][::-1]]
-    f_lines = [cv.seg(("W " if mode == "written" else "R "), AMBER if mode == "written" else tui.MUTED) + short_path(p, cwd, width - 3)
+    f_lines = [cv.seg(("W " if mode == "written" else "R "), TEAL if mode == "written" else tui.MUTED) + short_path(p, cwd, width - 3)
                for p, mode in stats.recent_files(8)]
     return {"Where the tokens went": w_lines or ["nothing measured yet"],
             "Subagents": a_lines or ["none this session"],
@@ -632,10 +634,10 @@ def render_frame(stats, cols, rows, t=0.0, mode="256", cwd=None, unicode=True, n
     fw = 14
     flame = flame_rows(h, t, fw, unicode)
     spark = embers(h, t, fw, 2)
-    colr = _mix(AMBER, RED, h)
-    art = [cv.seg(s, _mix(colr, (255, 230, 150), 0.4)) for s in spark]
+    colr = _mix(TEAL_DEEP, TEAL, h)
+    art = [cv.seg(s, _mix(colr, TEAL_LIGHT, 0.5)) for s in spark]
     for row in flame:
-        art.append("".join(" " if ch == " " else cv.seg(ch, _mix(colr, (255, 240, 170), 0.6 * (1 - v))) for ch, v in row))
+        art.append("".join(" " if ch == " " else cv.seg(ch, _mix(colr, TEAL_LIGHT, 0.7 * (1 - v))) for ch, v in row))
     art = ["" for _ in range(7 - len(art))] + art
     bw = max(8, min(30, cols - fw - 26))
     info = [cv.seg("Nodaris token monitor", tui.ACCENT, bold=True) + cv.seg("  q to quit", tui.MUTED),

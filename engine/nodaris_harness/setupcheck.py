@@ -53,6 +53,18 @@ def checks(settings=None, which=shutil.which, runner=subprocess.run):
                         "This version of Claude Code cannot report its sign-in; start `claude` to confirm you are signed in.",
                         None if signed else "Run `claude` once and sign in with your Claude account (or run: claude auth login)."))
 
+    if "claude" in hosts:
+        out.append(("The nodaris command", bool(which("nodaris")),
+                    "`nodaris` opens Claude Code with the harness and the token panel." if which("nodaris") else
+                    "`nodaris` is not on your PATH.",
+                    None if which("nodaris") else
+                    "Run python3 install.py again, or add ~/.local/bin to your PATH: "
+                    "echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> ~/.zshrc"))
+        out.append(("tmux, for the side panel", bool(which("tmux")),
+                    "The token panel opens beside Claude Code." if which("tmux") else
+                    "Without tmux the token panel opens in a separate window.",
+                    None if which("tmux") else "Install it (on a Mac: brew install tmux)."))
+
     code, name, _ = _run(["git", "config", "--get", "user.name"], runner)
     code2, mail, _ = _run(["git", "config", "--get", "user.email"], runner)
     ok = bool(name) and bool(mail)

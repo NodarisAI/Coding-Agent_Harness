@@ -1,5 +1,5 @@
 """Terminal presentation: plain-text degradation, the banner width fallback, colour modes and the fallback menus."""
-import io, os, sys, time
+import io, os, re, sys, time
 
 import pytest
 
@@ -122,3 +122,13 @@ def test_product_text_has_no_emoji():
 def test_progress_bar_text():
     assert tui.progress_bar(0.5, 10) == "█████░░░░░  50%"
     assert tui.progress_bar(2, 4, unicode=False) == "#### 100%"
+
+
+def test_gradient_stays_in_the_teal_family(monkeypatch):
+    monkeypatch.setenv("COLORTERM", "truecolor")
+    s = FakeTTY()
+    for phase in (0.0, 0.3, 0.77):
+        g = tui.gradient("NODARIS HARNESS WORDMARK", phase, s, shimmer=None)
+        for r, gg, b in (tuple(map(int, m)) for m in re.findall(r"38;2;(\d+);(\d+);(\d+)m", g)):
+            assert gg > r + 60 and b > r + 50, (r, gg, b)       # green and blue lead: teal, never red, orange or purple
+            assert abs(gg - b) < 60, (r, gg, b)
