@@ -210,7 +210,8 @@ def run(dry_run=False, since_days=30):
     for old in os.listdir(lesson_dir):
         if old.endswith(".md") and old not in keep:
             os.remove(os.path.join(lesson_dir, old))
-    telemetry = {k: v for k, v in data.items() if k != "lessons"} | {"lesson_count": len(data["lessons"])}
+    # The file name carries the date; leaving the time out means an unchanged day commits nothing.
+    telemetry = {k: v for k, v in data.items() if k not in ("lessons", "generated")} | {"lesson_count": len(data["lessons"])}
     with open(os.path.join(tele_dir, datetime.date.today().isoformat() + ".json"), "w") as f:
         f.write(json.dumps(telemetry, indent=2) + "\n")
     _git(work, "add", "-A", "--", os.path.join("team", handle))
