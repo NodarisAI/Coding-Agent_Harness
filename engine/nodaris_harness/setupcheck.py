@@ -99,7 +99,7 @@ def render(items):
     for title, ok, detail, fix in items:
         lines.append(("  ok    " if ok else "  todo  ") + title + ": " + detail)
         if fix:
-            lines.append("          " + fix)
+            lines.append("        Fix: " + fix)
     left = sum(1 for _, ok, _, _ in items if not ok)
     lines.append("")
     lines.append("Everything is set up." if not left else

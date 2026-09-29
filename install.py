@@ -197,7 +197,7 @@ def main(argv=None):
     if failed:
         lines.append("The check failed for " + ", ".join(failed) + "; the output is shown above.")
     if "claude" in done:
-        lines += ["", "Start a new Claude Code session to use the harness. Claude Code reads its settings when a session",
+        lines += ["", "Start a new Claude Code session to use the harness. Claude Code reads its settings when a session "
                   "starts, so a session that is already open keeps working without it until you restart it:",
                   "  Command line: exit the session, then run `claude --continue` to pick the same conversation up again.",
                   "  Desktop app: quit the app completely and open it again; your sessions reopen with the harness."]

@@ -45,7 +45,7 @@ def color_mode(stream=None):
 
 
 def width(stream=None):
-    return max(20, shutil.get_terminal_size((80, 24)).columns)
+    return max(20, shutil.get_terminal_size((80, 24)).columns or 80)   # some terminals report 0 columns
 
 
 def unicode_ok(stream=None):
