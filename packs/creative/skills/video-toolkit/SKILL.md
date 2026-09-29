@@ -14,7 +14,7 @@ Pick the engine first, then use the tested ffmpeg recipes for everything around 
 |---|---|---|
 | A short film of a product's real screens, 15-25 s | `product-film` skill (HTML page as a function of time, headless browser frames, ffmpeg) | No new dependency; the real components render with synthetic data. |
 | A React team wants reusable, parameterised video templates | Remotion (`remotion@4.0.529`, `@remotion/cli@4.0.529`) | Compositions are React components; props drive variants. Read its licence first: larger companies need a paid company licence. |
-| An agent writes HTML compositions with media timing and catalogue blocks | Hyperframes (`hyperframes@0.8.90`, Apache-2.0, HeyGen) | HTML in, MP4 out, built for agents. Never run `hyperframes publish`; it uploads. |
+| An agent writes HTML compositions with media timing and catalogue blocks, or a cinematic film with a Three.js layer | Hyperframes (`hyperframes@0.8.91`, Apache-2.0, HeyGen) | HTML in, MP4 out, built for agents. Never run `hyperframes publish`; it uploads. See "Hyperframes, verified" below. |
 | A recording of a terminal session | VHS (`terminal-motion` skill) | The tape is code, so the demo is reproducible. |
 | Editing footage that already exists | ffmpeg recipes below | Deterministic, scriptable, already installed. |
 
@@ -71,11 +71,32 @@ Set `F="/opt/homebrew/bin/ffmpeg -nostdin -hide_banner -loglevel error -y"` in b
 12. **Contact sheet of stills** (one frame per second, 4×2 grid):
     `$F -i film.mp4 -vf "fps=1,scale=480:-2,tile=4x2" -frames:v 1 contact.png`. Single frame: `$F -ss 1 -i film.mp4 -frames:v 1 still.png`.
 
+13. **Frame strip around every cut** (the review step after a render; times are the cuts plus or minus 0.2 s):
+    `for t in 6.5 6.8 13.2 13.5; do $F -ss $t -i film.mp4 -frames:v 1 -vf scale=480:-2 strip/$t.png; done`, then
+    `$F -pattern_type glob -i 'strip/*.png' -vf tile=4x2 -frames:v 1 strip.jpg`. Look at it and fix what it shows.
+14. **Loudness per 5 s window** (find silent or clipped stretches without listening; `n` is 5 s at 48 kHz):
+    `$F -i mix.wav -af "asetnsamples=n=240000,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:file=-" -f null - | grep RMS`
+    On the Phantom film this printed −29 … −11 dB per window, with the peaks on the thunder strike and the wordmark hit.
+
+## Hyperframes, verified (29 September 2026, `hyperframes@0.8.91`)
+- Commands, from the project folder: `npx hyperframes@0.8.91 lint`, then
+  `npx hyperframes@0.8.91 snapshot --at 2.3,9,15.4 --no-end --describe false -o snaps` for stills, then
+  `npx hyperframes@0.8.91 render -f 30 -q standard -w 4 -o renders/film.mp4`. A 60 s 1080p film with a
+  Three.js layer rendered in 4 min 14 s on an M-series Mac.
+- Set `HYPERFRAMES_NO_TELEMETRY=1` (or `DO_NOT_TRACK=1`) so renders send no usage data. `--describe` sends frames
+  to Gemini when a key is set; pass `--describe false` unless the person agreed.
+- The lint errors that matter: a `<audio>` needs an `id` or the render is silent; do not tween `letterSpacing`
+  or margins (animate each glyph's `x`); give repeated `fromTo` tweens on one element a `tl.set` baseline.
+- A Three.js layer renders from the `hf-seek` event and needs `data-duration` on the root. Register
+  `window.__hf.buildReady.<name>` so the first frame waits for the scene.
+- If the render fails with "Chrome cannot start ... ETIMEDOUT", the machine is too busy (a model generating on
+  the GPU); run it again once the load drops.
+
 ## Check the result
 `ffprobe -v error -show_entries format=duration:stream=codec_type,codec_name,width,height,pix_fmt -of compact=p=0 out.mp4`
 confirms duration, codecs, size and `yuv420p`. For loudness, `ffmpeg -nostdin -i out.mp4 -af volumedetect -f null -`
 prints mean and max volume; keep peaks below about -1 dB. Then look at the contact sheet.
 
 ## Not verified here
-Remotion and Hyperframes renders were not run (they install packages); VHS was not installed. Follow their own
+Remotion renders were not run (it installs packages); VHS was not installed. Follow their own
 documentation for the exact render command at the pinned version, and run it once before relying on it.

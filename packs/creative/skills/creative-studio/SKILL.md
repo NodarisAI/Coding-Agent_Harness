@@ -13,6 +13,7 @@ options instead of guessing.
 | The request sounds like | Load | Tool |
 |---|---|---|
 | "Launch video", "demo clip", "brag about this", "turn the product into a video" | `product-film` | HTML frames, headless browser, ffmpeg |
+| "Make it cinematic", a brand or mood film from photographs, "like this reference video" | `product-film` (its craft loop) | Hyperframes with a Three.js layer, pinned |
 | "Explainer video", "reel from our templates", parameterised or data-driven videos in a React codebase | `video-toolkit` (engine choice) | Remotion, pinned |
 | "Compose a video in HTML", Hyperframes blocks or catalogue, an agent-built motion graphic | `video-toolkit` (engine choice) | Hyperframes, pinned |
 | "Trim", "cut", "join", "crossfade", "add music", "duck the music", "captions", "make it vertical", "square version", "GIF of this" | `video-toolkit` (recipes) | ffmpeg |
@@ -31,6 +32,8 @@ options instead of guessing.
 - **Pin every package version.** Exact versions in `package.json`, `requirements.txt` or `go.mod` and the lock
   file. Never run `npx`, `uvx`, `pipx run` or `go run pkg@latest` at an unpinned version, and install nothing new
   without asking.
+- **A film gets at least three review passes.** Stills, then a frame strip around every cut, then fixes, as in
+  `product-film/references/craft-loop.md`. One render is a draft, not a delivery.
 - **Look at stills before a full render.** Pull frames or a contact sheet (`video-toolkit`, recipe 12) and look at
   them: text fits, nothing collides, contrast holds, no private data is on screen. Screenshot web motion at rest and
   mid-transition.

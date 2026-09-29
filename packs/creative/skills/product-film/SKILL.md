@@ -1,6 +1,6 @@
 ---
 name: product-film
-description: Use when someone wants a short video of what they built — "make a launch video", "turn this into a video", "brag about this", "a demo clip for the pilot", "show customers what it does" — from the project's own code or a website URL, for any kind of product. Builds a 15–25 second film in code from the product's real screens, with synthetic data only, true claims only, and a look at every scene before anything is rendered or shared (plus an automated patient-data check when the screens show health data).
+description: Use when someone wants a short video of what they built — "make a launch video", "turn this into a video", "brag about this", "a demo clip for the pilot", "show customers what it does" — from the project's own code or a website URL, for any kind of product; and for a cinematic brand or mood film of an object from photographs ("make it cinematic", "like this reference video", "dark and luxurious"). Builds a 15–25 second film in code from the product's real screens, with synthetic data only, true claims only, and a look at every scene before anything is rendered or shared (plus an automated patient-data check when the screens show health data).
 ---
 
 # Product film: a short video of the real product, safe to share
@@ -26,6 +26,13 @@ real personal data on any frame, and no claim the product has not earned.
   sentences, no internal jargon.
 - **Everything stays local.** Downloads, frames and renders stay in the output folder. Nothing is uploaded or
   posted; the person decides where the film goes.
+
+## 0. The craft loop (read first for any film that should look cinematic)
+Read `references/craft-loop.md`. In short: write the emotional brief first; take structure from a reference
+film the person likes; plan every beat against the tempo; build in layers (real-time scene, lit hero images,
+weather, type, finish, HUD chrome); make or place the sound on the cuts; then check still frames and a frame
+strip around every cut and fix what you find, at least three passes, before the person sees it. Record what
+the person liked and disliked afterwards.
 
 ## 1. Inspect
 Decide the input:
@@ -54,7 +61,8 @@ the person asks, and never for a customer-facing film.
   install nothing without asking). The encode, audio, reframing and caption recipes are in `video-toolkit`.
 - Readable text stays fully visible for about 0.3 s per word once the whole line is on screen.
 - Before the full render, look at stills from every scene and from the middle of every transition. Fix overflow,
-  collisions and low contrast. A crossfade between two busy layouts looks muddy: move old content out, then new
+  collisions and low contrast. After the render, pull a frame strip around every cut (`video-toolkit`, recipe 13)
+  and fix what it shows; a film is not finished after one render. A crossfade between two busy layouts looks muddy: move old content out, then new
   content in.
 - Sound: music and effects mixed as one piece, effects soft under the music. No voiceover unless asked. Use only
   audio the person supplied or audio whose licence allows it, and record the source in `film-plan.md`.
