@@ -79,7 +79,7 @@ If `nodaris-harness` is not on your path, run it as `~/.nodaris-harness-src/bin/
 
 Everything the harness records stays in `~/.nodaris-harness` on your machine: recorded sessions, approvals, your profile and personal lessons. Secrets are never read. Real patient data is never sent to a model without a business associate agreement, and redaction never writes the real values anywhere.
 
-Members of the Nodaris team can opt in to team sync, which shares only redacted lessons, learner changes and anonymous counts. It never shares code, prompts, file contents or patient data. See [docs/TEAM-DATA.md](docs/TEAM-DATA.md).
+Members of the Nodaris team can opt in to team sync. Once a day it shares redacted lessons, learner changes and anonymous counts with the Nodaris memory vault, and brings the rest of the team's lessons back into your recall. It never shares code, prompts, file contents or patient data. See [docs/TEAM-DATA.md](docs/TEAM-DATA.md).
 
 ## More
 

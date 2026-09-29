@@ -85,7 +85,7 @@ def test_packs_always_include_core():
 def test_nodaris_defaults_healthcare_and_suggests_team_sync(monkeypatch):
     s = onboard.build({"company": "NodarisAI", "team_sync": True}, which=no_tools, runner=fake_git)
     assert s["is_nodaris"] and s["use"] == ["healthcare"] and "healthcare" in s["packs"]
-    assert s["team_sync"] == {"enabled": True, "repo": "NodarisAI/harness-team-data", "handle": "jane.doe"}
+    assert s["team_sync"] == {"enabled": True, "repo": "NodarisAI/Nodaris-Memory-Vault", "handle": "jane.doe"}
 
 
 def test_save_load_show_and_reset(capsys):
@@ -262,3 +262,44 @@ def test_only_plain_plugin_commands_are_ever_run():
     assert not any(onboard._allowed_install(c) for c in bad)
     ran = []
     assert onboard.install_plugin({"install": bad[:1]}, runner=lambda *a, **k: ran.append(a)) is False and ran == []
+
+
+def _start(source="startup", session="s1"):
+    from nodaris_harness import dispatch
+    return dispatch.handle({"hook_event_name": "SessionStart", "session_id": session, "cwd": ".", "source": source})
+
+
+def test_onboarding_is_offered_only_in_the_first_session():
+    first = _start(session="a")
+    assert "has not finished onboarding" in first.get("context", "")
+    for source, session in (("startup", "b"), ("clear", "c"), ("resume", "d"), ("compact", "e"), (None, "f")):
+        assert "has not finished onboarding" not in _start(source, session).get("context", "")
+
+
+def test_prompts_and_tool_calls_never_offer_onboarding():
+    from nodaris_harness import dispatch
+    _start(session="a")
+    out = dispatch.handle({"hook_event_name": "UserPromptSubmit", "session_id": "a", "cwd": ".", "prompt": "fix the login page"})
+    assert "has not finished onboarding" not in json.dumps(out)
+
+
+def test_a_resumed_or_cleared_first_session_does_not_use_up_the_offer():
+    assert "has not finished onboarding" not in _start("resume", "a").get("context", "")
+    assert "has not finished onboarding" not in _start("clear", "a").get("context", "")
+    assert "has not finished onboarding" in _start("startup", "b").get("context", "")
+
+
+def test_only_one_of_two_simultaneous_first_sessions_claims_the_offer():
+    assert [onboard.claim_first_offer() for _ in range(3)] == [True, False, False]
+
+
+def test_an_onboarded_person_is_never_offered_onboarding():
+    onboard.save(onboard.build({"company": "Example Health"}))
+    assert "has not finished onboarding" not in _start(session="a").get("context", "")
+    assert not os.path.exists(onboard.offer_path())
+
+
+def test_uninstall_makes_the_next_install_a_new_first_use():
+    assert onboard.claim_first_offer()
+    onboard.forget_offer()
+    assert onboard.claim_first_offer()

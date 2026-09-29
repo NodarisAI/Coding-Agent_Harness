@@ -230,3 +230,28 @@ def test_the_status_line_is_added_only_when_none_exists_and_removed_on_uninstall
     (cfg / "settings.json").write_text(json.dumps({"statusLine": {"type": "command", "command": "mine"}}))
     hosts.install("claude", config_dir=str(cfg), skills=False)
     assert json.loads((cfg / "settings.json").read_text())["statusLine"]["command"] == "mine"
+
+
+def test_claude_install_adds_the_core_deny_rules_and_uninstall_removes_only_those(tmp_path, monkeypatch):
+    monkeypatch.setenv("NODARIS_HARNESS_HOME", str(tmp_path / "h"))
+    cfg = tmp_path / ".claude"
+    cfg.mkdir()
+    mine = {"permissions": {"deny": ["Read(~/.netrc)", "Bash(curl:*)"], "allow": ["Bash(ls:*)"]}, "theme": "dark"}
+    (cfg / "settings.json").write_text(json.dumps(mine, indent=2))
+    original = (cfg / "settings.json").read_bytes()
+    hosts.install("claude", user_home=str(tmp_path), config_dir=str(cfg), skills=False)
+    deny = json.loads((cfg / "settings.json").read_text())["permissions"]["deny"]
+    assert deny[:2] == ["Read(~/.netrc)", "Bash(curl:*)"]
+    assert "Read(~/.aws/**)" in deny and "Read(//**/.env)" in deny
+    assert deny.count("Read(~/.netrc)") == 1
+    hosts.uninstall("claude")
+    assert (cfg / "settings.json").read_bytes() == original
+
+
+def test_deny_rules_can_be_turned_off(tmp_path, monkeypatch):
+    monkeypatch.setenv("NODARIS_HARNESS_HOME", str(tmp_path / "h"))
+    (tmp_path / "h").mkdir()
+    (tmp_path / "h" / "settings.json").write_text(json.dumps({"deny_rules": False}))
+    cfg = tmp_path / ".claude"
+    hosts.install("claude", user_home=str(tmp_path), config_dir=str(cfg), skills=False)
+    assert "permissions" not in json.loads((cfg / "settings.json").read_text())

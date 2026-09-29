@@ -87,6 +87,8 @@ def uninstall(a, tui, hosts, policy):
     if not a.yes and not tui.confirm("Remove the harness now?", False):
         tui.line("Nothing was removed.")
         return 1
+    from nodaris_harness import onboard
+    onboard.forget_offer()
     for host in found:
         rep = hosts.uninstall(host)
         tui.line("%s: %d item(s) removed or restored." % (host, len(rep.get("removed", []))))

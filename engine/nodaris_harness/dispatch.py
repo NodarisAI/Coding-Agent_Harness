@@ -8,7 +8,7 @@ The engine never refuses ordinary work, and it never fails closed on its own bug
 error in a pipeline step is recorded and the call proceeds, except for the guards and the policy, whose errors refuse
 the call (a safety check that cannot run is not a pass).
 """
-import json, os, subprocess, sys
+import json, os, re, subprocess, sys
 
 from . import capsule, compact, copylint, designlint, events, gates, learner, memory, onboard, policy, profile, redact, router, signals, trajectory
 
@@ -90,6 +90,27 @@ def pre_tool(ev):
     return out
 
 
+READY_ARM = re.compile(r"(?:^|[\s/])nodaris-harness\s+ready\b[^;&|]*\s--(arm|disarm)\b")
+
+
+def _arm_ready(ev):
+    """The agent runs `nodaris-harness ready --arm`; only the hook knows its session, so the hook arms the loop."""
+    cmd = str((ev.get("tool_input") or {}).get("command") or "")
+    m = READY_ARM.search(cmd)
+    if not m:
+        return
+    from . import ready
+    try:
+        if m.group(1) == "disarm":
+            ready.disarm(ev["session_id"])
+            return
+        found = re.search(r"--manifest\s+(\S+)", cmd)
+        manifest = found.group(1).strip("'\"") if found else ready.DEFAULT
+        ready.arm(ev["session_id"], os.path.join(ev.get("cwd") or ".", os.path.expanduser(manifest)))
+    except Exception:  # noqa: BLE001  arming is a convenience; it must never block the command
+        pass
+
+
 def _pre_tool(ev):
     if ev["tool_name"] in AGENT_TOOLS and not ev.get("agent_id"):
         try:
@@ -114,6 +135,8 @@ def _pre_tool(ev):
             why = None
         if why:
             return {"decision": "deny", "rule": "branch-rule", "reason": why}
+    if ev["tool_name"] in ("Bash", "shell", "run_shell_command") and not ev.get("agent_id"):
+        _arm_ready(ev)
     pol = policy.load_policy()
     decision = policy.classify(ev["tool_name"], ev.get("tool_input"), ev["cwd"], pol)
     if decision.cls == "prohibited":
@@ -195,6 +218,13 @@ def stop(ev):
     why = gates.stop_check(ev, CLI)
     if why:
         return {"decision": "block", "rule": "route-gate", "reason": why}
+    try:
+        from . import ready
+        why = ready.stop_check(ev["session_id"], CLI)
+    except Exception:  # noqa: BLE001
+        why = None
+    if why:
+        return {"decision": "block", "rule": "acceptance", "reason": why}
     return {"decision": "allow"}
 
 
@@ -221,9 +251,14 @@ def handle(ev):
         elif name == "SessionStart":
             ctx = compact.restore(ev["session_id"]) if ev.get("source") in ("compact", "resume") else ""
             learned = profile.summary() if ev.get("source") in (None, "startup", "clear") else ""
-            if ev.get("source") in (None, "startup", "clear") and not onboard.is_onboarded():
+            if ev.get("source") in (None, "startup") and not onboard.is_onboarded() and onboard.claim_first_offer():
                 learned = "\n\n".join(x for x in (onboard.app_instructions(CLI), learned) if x)
             learner.start_in_background(CLI)
+            try:
+                from . import sync
+                sync.start_in_background(CLI)
+            except Exception:  # noqa: BLE001  sharing is best effort; it never holds up a session
+                pass
             outcome = {"decision": "allow", "context": "\n\n".join(x for x in (learned, ctx) if x)}
         else:
             outcome = {"decision": "allow"}

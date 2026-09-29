@@ -1,6 +1,6 @@
 # Team data: what `nodaris-harness sync` shares
 
-`nodaris-harness sync` (`--dry-run` shows exactly what would be shared, without sending it; `--days N` limits how far back it looks) pushes a bundle to your own branch. It never creates the team data repository — a maintainer creates that first.
+Team sync shares what your harness learned with the Nodaris memory vault, and brings back what the rest of the team learned. Once you opt in, it runs by itself at the start of a session, at most once a day. `nodaris-harness sync` runs it by hand; `--dry-run` shows exactly what would be shared without sending it, and `--days N` limits how far back it looks.
 
 ## Who it is for, and consent
 
@@ -25,7 +25,16 @@ Everything passes through the same redaction as recorded sessions before it leav
 
 ## Where it goes
 
-A private repository, `NodarisAI/harness-team-data`, on a branch named `team/<handle>`, where `<handle>` is the name you choose at setup. Only harness maintainers can read that repository. Each push is an ordinary git commit, so you can see exactly what was sent in your branch's history.
+The memory vault, `NodarisAI/Nodaris-Memory-Vault`, on your own branch `agent/team-memory/<handle>`, where `<handle>` is the name you choose at setup:
+
+- `team/<handle>/lessons/<id>.md`: one page per lesson, with the trigger keywords and the "when, do, don't, why".
+- `team/<handle>/telemetry/<date>.json`: the counts and learner changes described above, and how many tokens subagents spent. No text from your sessions.
+
+Each push is an ordinary git commit, so your branch's history shows exactly what was sent. The vault's `team-memory` check runs on every push and refuses a change outside your folder or anything that looks like a secret or a patient identifier.
+
+## How it comes back to you
+
+A maintainer runs `nodaris-harness team-intake`, which takes the well-formed pages from every member's branch, checks them again with redaction and commits them into the vault's `team/` folder on a branch for review. Once that is merged, every member's next sync copies the team's lessons into a read-only library on their machine, and the harness recalls them the same way it recalls your own. Lessons that hold up across several people are promoted into the vault's `platform/traps.md` or the product pages.
 
 ## How to turn it off
 
@@ -39,4 +48,4 @@ Run `python3 install.py --reconfigure` and answer no to sync. Nothing is sent af
 
 ## Retention
 
-Data is kept while you are on the team and for as long as the maintainers need it for the uses above. When you leave the team, or ask, your `team/<handle>` branch is deleted. Material already merged into shipped rules or a dataset stays, since it no longer identifies you.
+Data is kept while you are on the team and for as long as the maintainers need it for the uses above. When you leave the team, or ask, your `agent/team-memory/<handle>` branch and your `team/<handle>/` folder are deleted. Material already merged into shipped rules or a dataset stays, since it no longer identifies you.

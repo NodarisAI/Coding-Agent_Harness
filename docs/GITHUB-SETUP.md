@@ -63,13 +63,7 @@ gh api repos/NodarisAI/Coding-Agent_Harness/branches/main/protection \
 
 Expected: `checks` is `["tests"]`, `reviews` is `1`, `linear` is `true`, `force` and `delete` are `false`.
 
-## 5. Team data repository (for sync)
+## 5. Team memory (for sync)
 
-`nodaris-harness sync` pushes to a separate private repository. Create it once:
+`nodaris-harness sync` pushes to the memory vault, `NodarisAI/Nodaris-Memory-Vault`, which already exists. No new repository is needed. Give each team member who opts in write access to the vault. GitHub cannot restrict a person with write access to one branch, so two things keep each member in their own folder: the sync command writes only `team/<handle>/` on `agent/team-memory/<handle>`, and the vault's `team-memory` check fails any push that changes another member's folder. A maintainer merges the members' pages with `nodaris-harness team-intake`. See [TEAM-DATA.md](TEAM-DATA.md).
 
-```
-gh repo create NodarisAI/harness-team-data --private \
-  --description "Redacted lessons, learner changes and anonymous counts from opted-in team members."
-```
-
-Give team members who opt in write access, and limit reading the data to maintainers where the plan allows. GitHub cannot restrict a person with write access to one branch, so each member's pushes are confined to `team/<handle>` by the sync command, not by GitHub. See [TEAM-DATA.md](TEAM-DATA.md).

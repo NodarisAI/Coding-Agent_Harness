@@ -117,6 +117,13 @@ def _hooks_json(host, raw, root):
             group["matcher"] = matcher
         lst.append(group)
         hooks[ev] = lst
+    if host == "claude" and _harness_setting("deny_rules", True):
+        # Secret stores and credential files the agent may never read or edit. Added next to the person's own rules;
+        # uninstall removes only the ones that were not there before.
+        perms = data.setdefault("permissions", {})
+        deny = list(perms.get("deny") or [])
+        deny += [r for r in deny_rules(root) if r not in deny]
+        perms["deny"] = deny
     if host == "claude" and _harness_setting("statusline", True) and not data.get("statusLine"):
         # Only when the person has no status line of their own; uninstall removes it again.
         data["statusLine"] = {"type": "command", "command": f'"{python()}" "{bin_path(root)}" statusline', "padding": 0}
@@ -130,6 +137,15 @@ def _hooks_json(host, raw, root):
     return data
 
 
+def deny_rules(root=None):
+    try:
+        with open(os.path.join(root or ENGINE_ROOT, "packs", "core", "vendor", "deny.json")) as fh:
+            rules = json.load(fh)
+        return [r for r in rules if isinstance(r, str)]
+    except (OSError, ValueError):
+        return []
+
+
 def _harness_setting(key, default):
     try:
         with open(os.path.join(home(), "settings.json")) as fh:
@@ -139,8 +155,19 @@ def _harness_setting(key, default):
         return default
 
 
-def _strip_hooks(raw):
+def _strip_hooks(raw, before=None, root=None):
     data = _load_json(raw)
+    perms = data.get("permissions")
+    if isinstance(perms, dict) and isinstance(perms.get("deny"), list):
+        prior = (before or {}).get("permissions")
+        prior = prior if isinstance(prior, dict) else None
+        had = set((prior or {}).get("deny") or [])
+        ours = set(deny_rules(root))
+        perms["deny"] = [r for r in perms["deny"] if r not in ours or r in had]
+        if not perms["deny"] and "deny" not in (prior or {}):
+            del perms["deny"]
+        if not perms and prior is None:
+            del data["permissions"]
     if "nodaris-harness\" statusline" in json.dumps(data.get("statusLine") or {}).replace("\\\"", "\""):
         del data["statusLine"]
     hooks = data.get("hooks", {})
@@ -336,8 +363,8 @@ def uninstall(host):
             continue
         original = _read(f["backup"]) if f.get("backup") else None
         if f["kind"] == "json-hooks":
-            stripped = _strip_hooks(cur)
             before = _load_json(original) if original is not None else {}
+            stripped = _strip_hooks(cur, before, m.get("root"))
             if host == "gemini":
                 had = (before.get("context") or {}).get("fileName")
                 had = [had] if isinstance(had, str) else (had or [])

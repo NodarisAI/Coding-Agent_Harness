@@ -37,10 +37,11 @@ HOSTS = tuple(v for v, _, _ in HOST_OPTIONS)
 PACKS = ("core", "healthcare", "creative")
 BUDGETS = {"pro": 150000, "max": 600000, "team": 400000, "api": 300000}
 PLUGIN_STATUSES = ("suggested", "accepted", "declined", "installed", "failed")
-TEAM_REPO = "NodarisAI/harness-team-data"
+TEAM_REPO = "NodarisAI/Nodaris-Memory-Vault"
 TEAM_SYNC_TEXT = ("Team sync shares your redacted lessons, the changes the learner makes to your profile and anonymous "
-                  "usage counts with the Nodaris team repository, so everyone's agent learns from the same mistakes. "
-                  "It never shares code, prompts, file contents or patient data.")
+                  "usage counts with the Nodaris memory vault once a day, and brings the rest of the team's lessons "
+                  "back into your recall, so everyone's agent learns from the same mistakes. It never shares code, "
+                  "prompts, file contents or patient data.")
 UNVERIFIED = "found by search, not verified"
 
 
@@ -74,6 +75,33 @@ def is_onboarded():
     except SettingsError:
         return False
     return True
+
+
+def offer_path():
+    return os.path.join(policy.home(), "onboarding-offered")
+
+
+def claim_first_offer():
+    """True exactly once per install: for the first session that finds onboarding unfinished. Later sessions, prompts
+    and tool calls never offer it again; the person can run `nodaris-harness onboard` whenever they want. The marker
+    is created atomically, so two sessions opened at the same moment cannot both offer it."""
+    path = offer_path()
+    try:
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except OSError:
+        return False
+    with os.fdopen(fd, "w") as fh:
+        fh.write(datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat() + "\n")
+    return True
+
+
+def forget_offer():
+    """Called by a full uninstall, so the next install is a new first use."""
+    try:
+        os.remove(offer_path())
+    except OSError:
+        pass
 
 
 def save(settings):
@@ -213,6 +241,7 @@ def build(answers, which=None, runner=None, now=None):
                 "team_sync": team, "plugins": plugins,
                 "reversible_delete": _bool("reversible_delete", answers.get("reversible_delete", True)),
                 "branch_rule": _bool("branch_rule", answers.get("branch_rule", True)),
+                "deny_rules": _bool("deny_rules", answers.get("deny_rules", True)),
                 "statusline": _bool("statusline", answers.get("statusline", True)),
                 "onboarded_at": answers.get("onboarded_at") or (now or datetime.datetime.now(datetime.timezone.utc))
                 .replace(microsecond=0).isoformat()}
@@ -512,6 +541,9 @@ def app_instructions(cli_path):
         f"5. Run `{cli_path} onboard --discover \"<company>\"`. Offer each plugin it lists with its install commands. "
         "Run those exact commands only after the person says yes to that plugin, and report each exit code. "
         "Say plainly when a result is marked as found by search and not verified.\n"
+        "If the person would rather skip it, stop and tell them they can run "
+        f"`{cli_path} onboard` whenever they like. This is the only time the harness offers onboarding; it will not "
+        "ask again in later sessions.\n"
         "Keep each message short and in plain sentences."
     )
 

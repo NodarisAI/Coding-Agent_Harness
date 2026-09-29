@@ -1,8 +1,9 @@
 """Portable lesson memory: mistakes are written down once and recalled when the same situation comes back.
 
-Two libraries, both JSON Lines:
-- the team's, committed with the repository: <repo>/.nodaris-harness/lessons.jsonl
+Three libraries, all JSON Lines:
+- the repository's, committed with it: <repo>/.nodaris-harness/lessons.jsonl
 - the person's own: <harness home>/lessons/lessons.jsonl
+- the team's, read-only, refreshed from the memory vault by team sync: <harness home>/lessons/team.jsonl
 
 A lesson has a trigger (keywords, file globs) and an instruction (when, do, don't, why). Recall runs on every prompt
 (keyword overlap with the request) and on every file edit (glob match), and each lesson is shown at most once per
@@ -39,16 +40,26 @@ def libraries(cwd):
     return out
 
 
+def team_library():
+    """Read-only: the team's lessons from the memory vault, refreshed by team sync. Never written by `add`."""
+    return os.path.join(home(), "lessons", "team.jsonl")
+
+
 def load(cwd):
     lessons = []
-    for path in libraries(cwd):
+    seen = set()
+    for path in libraries(cwd) + [team_library()]:
         if os.path.exists(path):
             with open(path) as fh:
                 for line in fh:
                     try:
-                        lessons.append(json.loads(line))
+                        item = json.loads(line)
                     except ValueError:
                         continue
+                    key = item.get("id") or json.dumps(item, sort_keys=True) if isinstance(item, dict) else None
+                    if key and key not in seen:
+                        seen.add(key)
+                        lessons.append(item)
     return lessons
 
 

@@ -12,6 +12,9 @@
   nodaris-harness export --format sft|eval --out FILE  training and evaluation datasets from recorded episodes
   nodaris-harness gitcheck --stage pre-commit|pre-push (called by the git hooks)
   nodaris-harness policy [--explain CMD]               the policy version and hash, or how a command is classed
+  nodaris-harness sync [--dry-run]                     share redacted lessons and counts with the memory vault (opt-in)
+  nodaris-harness team-intake [--vault DIR] [--dry-run] maintainers: merge members' branches into a vault review branch
+  nodaris-harness ready [--manifest F] [--arm|--disarm] are we done? runs the acceptance list; --arm makes the Stop hook ask
 """
 import argparse, getpass, json, os, subprocess, sys
 
@@ -377,6 +380,14 @@ def cmd_trash(a):
 def cmd_sync(a):
     from . import sync
     code, msg = sync.run(dry_run=a.dry_run, since_days=a.days)
+    if not a.quiet or code:
+        print(msg, file=sys.stdout if code == 0 else sys.stderr)
+    return code
+
+
+def cmd_team_intake(a):
+    from . import sync
+    code, msg = sync.intake(os.path.expanduser(a.vault), dry_run=a.dry_run, bump=not a.no_bump)
     print(msg)
     return code
 
@@ -395,6 +406,33 @@ def cmd_budget(a):
 def cmd_onboard(a):
     from . import onboard
     return onboard.run_cli(a)
+
+
+def cmd_ready(a):
+    from . import ready
+    manifest = a.manifest or os.path.join(os.getcwd(), ready.DEFAULT)
+    session = a.session or os.environ.get("CLAUDE_SESSION_ID") or ""
+    if a.disarm:
+        if session:
+            ready.disarm(session)
+        print("The Stop hook no longer checks the acceptance list in this session.")
+        return 0
+    try:
+        name, results = ready.evaluate(manifest, only=set(a.only) if a.only else None)
+    except ready.ManifestError as e:
+        print(e, file=sys.stderr)
+        return 1
+    if a.json:
+        code, line = ready.verdict(results)
+        print(json.dumps({"name": name, "verdict": line, "results": results}, indent=2))
+    else:
+        code = ready.report(name, results)
+    if a.arm:
+        if session:
+            ready.arm(session, manifest)
+        print(f"Armed: while a check fails, the agent's session is sent back to work instead of finishing "
+              f"(at most {ready.MAX_BLOCKS} rounds). The harness arms the session that ran this command.")
+    return code
 
 
 def cmd_policy(a):
@@ -442,12 +480,20 @@ def main(argv=None):
     s.add_argument("paths", nargs="*"); s.add_argument("--restore"); s.add_argument("--list", action="store_true")
     s.add_argument("--empty", type=int, metavar="DAYS"); s.set_defaults(fn=cmd_trash)
     s = sub.add_parser("sync", help="share redacted lessons and counts with your team (opt-in)")
-    s.add_argument("--dry-run", action="store_true"); s.add_argument("--days", type=int, default=30); s.set_defaults(fn=cmd_sync)
+    s.add_argument("--dry-run", action="store_true"); s.add_argument("--days", type=int, default=30)
+    s.add_argument("--quiet", action="store_true"); s.set_defaults(fn=cmd_sync)
+    s = sub.add_parser("team-intake", help="maintainers: merge members' team memory branches into a vault review branch")
+    s.add_argument("--vault", default="~/Nodaris-Memory-Vault"); s.add_argument("--dry-run", action="store_true")
+    s.add_argument("--no-bump", action="store_true"); s.set_defaults(fn=cmd_team_intake)
     s = sub.add_parser("budget", help="show or raise the subagent token budget")
     s.add_argument("--add", type=int, default=0); s.add_argument("--session"); s.set_defaults(fn=cmd_budget)
     s = sub.add_parser("gitcheck"); s.add_argument("--stage", required=True, choices=["pre-commit", "pre-push"])
     s.add_argument("rest", nargs="*"); s.set_defaults(fn=cmd_gitcheck)
     s = sub.add_parser("policy"); s.add_argument("--explain"); s.set_defaults(fn=cmd_policy)
+    s = sub.add_parser("ready", help="are we done? run the acceptance list, item by item")
+    s.add_argument("--manifest"); s.add_argument("--only", nargs="*"); s.add_argument("--json", action="store_true")
+    s.add_argument("--arm", action="store_true"); s.add_argument("--disarm", action="store_true"); s.add_argument("--session")
+    s.set_defaults(fn=cmd_ready)
     s = sub.add_parser("security"); s.add_argument("action", choices=["check", "scope"]); s.add_argument("--repo")
     s.add_argument("--env", action="append"); s.add_argument("--checks"); s.add_argument("--target", action="append")
     s.add_argument("--static-only", action="store_true"); s.set_defaults(fn=cmd_security)
