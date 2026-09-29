@@ -16,6 +16,8 @@
   nodaris-harness graph [PATH] [--install] [--dry-run]  code graphs: code-review-graph and graphify for a repository
   nodaris-harness team-intake [--vault DIR] [--dry-run] maintainers: merge members' branches into a vault review branch
   nodaris-harness ready [--manifest F] [--arm|--disarm] are we done? runs the acceptance list; --arm makes the Stop hook ask
+  nodaris-harness jev status|on|off|fetch-key [--profile P]  Jev, the prompt reader; fetch-key reads the team key from AWS
+  nodaris-harness setup-check                           what you still need to set up yourself (sign-ins, git, the Jev key)
 """
 import argparse, getpass, json, os, subprocess, sys
 
@@ -473,6 +475,38 @@ def cmd_policy(a):
     return 0
 
 
+def cmd_jev(a):
+    from . import jev
+    if a.action == "on":
+        jev.set_enabled(True)
+        print("Jev is on." + ("" if jev.status()["key"] else " It has no key yet; run `nodaris-harness jev fetch-key`."))
+        return 0
+    if a.action == "off":
+        jev.set_enabled(False)
+        print("Jev is off. Messages are no longer sent to it.")
+        return 0
+    if a.action == "fetch-key":
+        ok, msg = jev.fetch_key(profile=a.profile or (onboard_settings().get("aws_profile")))
+        print(msg)
+        return 0 if ok else 1
+    st = jev.status()
+    print("Jev is %s. Team key: %s. Spent today: $%.4f of $%.2f." % (
+        "on" if st["enabled"] else "off", "present" if st["key"] else "missing", st["spent_today_usd"], st["daily_cap_usd"]))
+    return 0
+
+
+def onboard_settings():
+    from . import onboard
+    return onboard.load() or {}
+
+
+def cmd_setup_check(a):
+    from . import setupcheck
+    items = setupcheck.checks()
+    print("\n".join(setupcheck.render(items)))
+    return 0 if all(ok for _, ok, _, _ in items) else 1
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="nodaris-harness", description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -536,6 +570,11 @@ def main(argv=None):
     s.add_argument("--verdict"); s.add_argument("--findings"); s.add_argument("--reviewer"); s.set_defaults(fn=cmd_design)
     s = sub.add_parser("watch", help="live token monitor and activity panel"); from . import monitor as _mon
     _mon.add_arguments(s); s.set_defaults(fn=lambda a: _mon.watch(a))
+    s = sub.add_parser("jev", help="Jev, the prompt reader: status, on, off, or fetch the team key from AWS")
+    s.add_argument("action", choices=["status", "on", "off", "fetch-key"]); s.add_argument("--profile")
+    s.set_defaults(fn=cmd_jev)
+    s = sub.add_parser("setup-check", help="what you still need to set up yourself: sign-ins, git, the Jev key")
+    s.set_defaults(fn=cmd_setup_check)
     s = sub.add_parser("statusline", help="one status line for Claude Code (reads its JSON on stdin)")
     s.set_defaults(fn=lambda a: __import__("nodaris_harness.statusline", fromlist=["main"]).main(a))
     a = ap.parse_args(argv)

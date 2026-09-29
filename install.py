@@ -13,6 +13,9 @@ Answers JSON keys (values or the option labels shown in the questions):
   reply_style    brief, explain or teach
   plan           pro, max, team or api
   team_sync      yes or no (Nodaris team members only)
+  jev            yes or no (Nodaris team members only; on by default for them)
+  aws_profile    optional AWS profile used to fetch the Jev team key
+  graphs         yes or no: install the code graph tools
   packs          optional list of core, healthcare, creative (derived from use when absent)
   subagent_budget_tokens   optional whole number (set from the plan when absent)
 """
@@ -80,7 +83,9 @@ def uninstall(a, tui, hosts, policy):
         return 0
     tui.panel("Uninstall", ["The harness will be removed from: " + ", ".join(found) + ".",
                             "Files it changed are restored from their backups when nothing else changed them.",
-                            "Your settings and lessons in " + policy.home() + " are kept."])
+                            "Your settings and lessons in " + policy.home() + " are kept.",
+                            "Code graph tools you chose to install (code-review-graph and graphify) stay installed; "
+                            "docs/TEAM-SETUP.md shows how to remove them."])
     if a.dry_run:
         tui.line("Dry run: nothing was removed.")
         return 0
@@ -179,11 +184,23 @@ def main(argv=None):
         tui.line("Run the same command without --dry-run to install.")
         return 0
     binp = hosts.bin_path()
+    if settings.get("jev") and done:
+        onboard.fetch_jev_key(settings, write=tui.line)
+    from nodaris_harness import setupcheck
+    todo = [x for x in setupcheck.checks(settings) if not x[1]]
+    if todo:
+        tui.panel("Before you start: set these up yourself", setupcheck.render(todo)[:-2] +
+                  ["", "Run %s setup-check to see this list again." % binp])
     lines = []
     if done:
         lines.append("Installed and checked for " + ", ".join(done) + ".")
     if failed:
         lines.append("The check failed for " + ", ".join(failed) + "; the output is shown above.")
+    if "claude" in done:
+        lines += ["", "Start a new Claude Code session to use the harness. Claude Code reads its settings when a session",
+                  "starts, so a session that is already open keeps working without it until you restart it:",
+                  "  Command line: exit the session, then run `claude --continue` to pick the same conversation up again.",
+                  "  Desktop app: quit the app completely and open it again; your sessions reopen with the harness."]
     lines += ["", "Commands you will use next:",
               "  %s watch --split     live panel: tokens burning, subagents, memories and files" % binp,
               "  %s approve --list    see actions waiting for your approval" % binp,

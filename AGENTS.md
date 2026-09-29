@@ -18,6 +18,7 @@ Follow these steps in order. Never skip the permission step.
    - How will you use it? (healthcare apps, websites, video and motion, general software; more than one is fine)
    - Which coding agents should it connect to? (Claude Code, Codex, Gemini CLI, Cursor, OpenCode)
    - How should replies be written? (brief, explaining, teaching)
+   - Nodaris team members only: turn on Jev? (yes by default; its key is fetched from AWS with their own sign-in)
    - Which plan are you on?
 
    Then run, from `~/.nodaris-harness-src`:
@@ -28,7 +29,9 @@ Follow these steps in order. Never skip the permission step.
 
    Show the person the planned changes, then run the same command without `--dry-run`. The answers JSON uses the keys the installer documents in `python3 install.py --help`; read that output rather than guessing key names.
 
-5. **Run the doctor and report.** Run `bin/nodaris-harness doctor --host <host>` for each connected agent. Report the result in plain sentences: which agents are connected, whether every check passed, how to undo it (`bin/nodaris-harness uninstall --host <host>`, or `python3 install.py --uninstall`), and anything that failed with its exact output.
+5. **Restart and finish personal setup.** Tell the person that Claude Code reads its settings when a session starts, so they need a new session (command line: exit and run `claude --continue`; desktop app: quit and reopen it). Run `bin/nodaris-harness setup-check` and show them each `todo` line with its fix; the sign-ins (Claude, GitHub, AWS) are theirs to do. Nodaris team members follow `docs/TEAM-SETUP.md`.
+
+6. **Run the doctor and report.** Run `bin/nodaris-harness doctor --host <host>` for each connected agent. Report the result in plain sentences: which agents are connected, whether every check passed, how to undo it (`bin/nodaris-harness uninstall --host <host>`, or `python3 install.py --uninstall`), and anything that failed with its exact output.
 
 Rules while installing:
 - Never skip or pre-answer the permission step.

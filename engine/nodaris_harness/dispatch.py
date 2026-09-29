@@ -211,7 +211,21 @@ def prompt(ev):
     if res:
         parts.append(_context_of(res[1]))
     parts.append(memory.recall_for_prompt(ev["session_id"], ev["cwd"], text))
-    return {"decision": "allow", "context": "\n\n".join(_fresh(ev["session_id"], *parts)), "route": decision}
+    fresh = _fresh(ev["session_id"], *parts)
+    fresh.append(_jev(ev, text))   # per message by design, so it is not deduplicated
+    return {"decision": "allow", "context": "\n\n".join(x for x in fresh if x), "route": decision}
+
+
+def _jev(ev, text):
+    from . import jev
+    marker = os.path.join(gates._sdir(ev["session_id"]), "jev-seen")
+    first = not os.path.exists(marker)
+    if first:
+        try:
+            open(marker, "w").close()
+        except OSError:
+            pass
+    return jev.for_prompt(ev, text, first)
 
 
 def post_tool(ev):

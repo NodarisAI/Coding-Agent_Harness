@@ -6,9 +6,11 @@
 Clones the source, installs for Claude Code with onboarding answers, checks the settings it wrote, checks that
 onboarding is offered once on a machine that skipped it and never on one that finished it, runs the doctor, then
 uninstalls and checks the person's own settings file comes back byte for byte. Nothing outside a temporary folder
-is touched. Exit code 0 means every step passed.
+is touched. Then installs again as a Nodaris team member with Jev on, against a stand-in `aws` command and a local
+stand-in for the Jev service, and checks the key handling, the restart notice, the setup checklist and that a
+message with patient identifiers never reaches Jev. Exit code 0 means every step passed.
 """
-import argparse, json, os, shutil, subprocess, sys, tempfile
+import argparse, http.server, json, os, shutil, stat, subprocess, sys, tempfile, threading
 
 REPO = "https://github.com/NodarisAI/Coding-Agent_Harness.git"
 ANSWERS = {"company": "Example Health", "is_nodaris": "No", "use": ["Healthcare apps", "Websites and motion"], "role": "Engineer",
@@ -25,6 +27,82 @@ def hook(py, src, env, payload):
     p = subprocess.run([py, os.path.join(src, "bin", "nodaris-harness"), "hook", "--host", "claude"],
                        input=json.dumps(payload), capture_output=True, text=True, env=env, timeout=120)
     return p.stdout
+
+FAKE_KEY = "sk-or-v1-" + "e2e0" * 12
+NODARIS = dict(ANSWERS, company="Nodaris", is_nodaris="Yes", use=["Healthcare apps"], jev="Yes")
+JEV_REPLY = {"answers": {"type": {"choice": "fix", "confidence": 0.9}, "effort": {"choice": "medium", "confidence": 0.8},
+                         "shape_reply": {"choice": "explain", "probabilities": {"explain": 0.8}}, "critical": {"noul": 0.1}},
+             "usage": {"cost": 0.0001}}
+
+
+def jev_stand_in():
+    seen = []
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            seen.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+            out = json.dumps(JEV_REPLY).encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(out)))
+            self.end_headers()
+            self.wfile.write(out)
+
+        def log_message(self, *args):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv, seen
+
+
+def nodaris_member(a, src, tmp):
+    """A Nodaris team member: Jev on, the team key fetched through their own AWS sign-in."""
+    ok = True
+    home = os.path.join(tmp, "member")
+    stub = os.path.join(tmp, "stub-bin")
+    os.makedirs(os.path.join(home, ".claude"))
+    os.makedirs(stub)
+    with open(os.path.join(stub, "aws"), "w") as fh:
+        fh.write("#!/bin/sh\n[ \"$1 $2\" = \"secretsmanager get-secret-value\" ] || exit 2\necho %s\n" % FAKE_KEY)
+    os.chmod(os.path.join(stub, "aws"), 0o755)
+    srv, seen = jev_stand_in()
+    try:
+        hh = os.path.join(home, ".nodaris-harness")
+        env = dict(os.environ, HOME=home, NODARIS_HARNESS_HOME=hh, NODARIS_HARNESS_NO_BG="1", NODARIS_REDUCED_MOTION="1",
+                   PATH=stub + os.pathsep + os.environ.get("PATH", ""),
+                   NODARIS_JEV_URL="http://127.0.0.1:%d/api/alpha/decisions" % srv.server_port)
+        r = subprocess.run([a.python, os.path.join(src, "install.py"), "--yes", "--no-motion", "--host", "claude",
+                            "--answers", json.dumps(NODARIS)], capture_output=True, text=True, env=env, timeout=900)
+        out = r.stdout + r.stderr
+        ok &= step("Nodaris member: install with Jev on", r.returncode == 0, out[-400:])
+        key = os.path.join(hh, "secrets", "jev.key")
+        ok &= step("Nodaris member: team key fetched through AWS into a private file",
+                   os.path.exists(key) and stat.S_IMODE(os.stat(key).st_mode) == 0o600)
+        ok &= step("Nodaris member: the key is never printed", FAKE_KEY not in out)
+        ok &= step("Nodaris member: told to restart Claude Code (command line and desktop app)",
+                   "claude --continue" in out and "Desktop app" in out)
+        ok &= step("Nodaris member: setup checklist shown", "Before you start" in out or "setup-check" in out)
+        prompt = {"hook_event_name": "UserPromptSubmit", "session_id": "m1", "cwd": home,
+                  "prompt": "the export button on the billing page fails with a 500, find the cause and fix it"}
+        ctx = hook(a.python, src, env, prompt)
+        ok &= step("Nodaris member: Jev shapes a message", "Reply shape: explain" in ctx and len(seen) == 1, ctx[-300:])
+        ok &= step("Nodaris member: the key is not in what Jev received", FAKE_KEY not in json.dumps(seen))
+        phi = dict(prompt, session_id="m2", prompt="Patient John Smith, SSN 123-45-6789, DOB 03/14/1961 was denied, fix the claim")
+        blocked = hook(a.python, src, env, phi)
+        ok &= step("Nodaris member: a message with patient identifiers is blocked and never reaches Jev",
+                   "patient information" in blocked and len(seen) == 1, blocked[-300:])
+        r = subprocess.run([a.python, os.path.join(src, "bin", "nodaris-harness"), "jev", "status"],
+                           capture_output=True, text=True, env=env, timeout=60)
+        ok &= step("Nodaris member: jev status", r.returncode == 0 and "Team key: present" in r.stdout, r.stdout)
+        r = subprocess.run([a.python, os.path.join(src, "bin", "nodaris-harness"), "setup-check"],
+                           capture_output=True, text=True, env=env, timeout=120)
+        ok &= step("Nodaris member: setup-check runs and lists the Jev key as done", "ok    Jev team key" in r.stdout, r.stdout[-400:])
+        r = subprocess.run([a.python, os.path.join(src, "install.py"), "--uninstall", "--yes", "--no-motion"],
+                           capture_output=True, text=True, env=env, timeout=600)
+        ok &= step("Nodaris member: uninstall", r.returncode == 0, (r.stdout + r.stderr)[-300:])
+    finally:
+        srv.shutdown()
+    return ok
 
 
 def main(argv=None):
@@ -82,6 +160,7 @@ def main(argv=None):
         ok &= step("uninstall", r.returncode == 0, (r.stdout + r.stderr)[-300:])
         ok &= step("the person's settings file is back byte for byte", open(own, "rb").read() == before)
         ok &= step("skills removed", not os.path.isdir(os.path.join(skills, "spec-first")))
+        ok &= nodaris_member(a, src, tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print("All steps passed." if ok else "Some steps failed.")

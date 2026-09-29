@@ -42,6 +42,10 @@ TEAM_SYNC_TEXT = ("Team sync shares your redacted lessons, the changes the learn
                   "usage counts with the Nodaris memory vault once a day, and brings the rest of the team's lessons "
                   "back into your recall, so everyone's agent learns from the same mistakes. It never shares code, "
                   "prompts, file contents or patient data.")
+JEV_TEXT = ("Jev is a small decision model that reads each message and tells the agent what kind of work it is, how "
+            "much effort it deserves and how to shape the reply. Messages with patient identifiers are never sent to "
+            "it, and credentials are masked first. It uses the Nodaris team key, which the harness fetches from AWS "
+            "with your own AWS sign-in and keeps in a file only you can read.")
 GRAPH_TEXT = ("Code graphs let the agent answer \"what calls this\" and \"what breaks if this changes\" from a graph of the "
               "repository instead of reading files one by one, which saves tokens and catches more. It installs two "
               "open-source tools, code-review-graph and graphify, with uv, and connects them to Claude Code.")
@@ -247,6 +251,8 @@ def build(answers, which=None, runner=None, now=None):
                 "deny_rules": _bool("deny_rules", answers.get("deny_rules", True)),
                 "graphs": _bool("graphs", answers.get("graphs", False)),
                 "statusline": _bool("statusline", answers.get("statusline", True)),
+                "jev": _bool("jev", answers.get("jev", is_nodaris)) and is_nodaris,
+                "aws_profile": str(answers.get("aws_profile") or ""),
                 "onboarded_at": answers.get("onboarded_at") or (now or datetime.datetime.now(datetime.timezone.utc))
                 .replace(microsecond=0).isoformat()}
     validate(settings)
@@ -602,6 +608,10 @@ def interactive(ui=None, which=None, runner=None, show_splash=True, save_setting
     if is_nodaris:
         ui.panel("Team sync", TEAM_SYNC_TEXT, stream)
         team = ui.confirm("Turn on team sync?", bool((prev.get("team_sync") or {}).get("enabled", False)), stream)
+    jev_on = False
+    if is_nodaris:
+        ui.panel("Jev", JEV_TEXT, stream)
+        jev_on = ui.confirm("Turn on Jev?", bool(prev.get("jev", True)), stream)
 
     graphs = False
     try:
@@ -625,7 +635,8 @@ def interactive(ui=None, which=None, runner=None, show_splash=True, save_setting
                         "status": "accepted" if yes else "declined"})
 
     settings = build({"company": company, "is_nodaris": is_nodaris, "use": uses, "role": role, "hosts": hosts,
-                      "reply_style": style, "plan": plan, "team_sync": team, "plugins": plugins, "graphs": graphs},
+                      "reply_style": style, "plan": plan, "team_sync": team, "plugins": plugins, "graphs": graphs,
+                      "jev": jev_on, "aws_profile": prev.get("aws_profile") or ""},
                      which=which, runner=runner)
     ui.panel("Summary", summary_lines(settings), stream)
     if not ui.confirm("Save these settings?", True, stream):
@@ -638,8 +649,22 @@ def interactive(ui=None, which=None, runner=None, show_splash=True, save_setting
             from . import graph as _graph
             cmds = (_graph.install_commands(which) or []) + _graph.wire_commands(which, runner)
             _graph.run_commands(cmds, runner, write=lambda t: ui.line(t, stream))
+        if settings.get("jev"):
+            fetch_jev_key(settings, runner, lambda t: ui.line(t, stream))
         ui.line(f"Settings saved to {settings_path()}.", stream)
     return settings
+
+
+def fetch_jev_key(settings, runner=None, write=print):
+    """Fetch the Jev team key from AWS once, when it is not already on this machine. Never prints the key."""
+    from . import jev
+    if jev.status()["key"]:
+        write("Jev: the team key is already on this machine.")
+        return True
+    kw = {"runner": runner} if runner else {}
+    ok, msg = jev.fetch_key(profile=settings.get("aws_profile") or None, **kw)
+    write("Jev: " + msg)
+    return ok
 
 
 def _install_accepted(settings, suggestions, runner, stream):
@@ -665,6 +690,7 @@ def summary_lines(s):
              f"Replies: {label(STYLE_OPTIONS, s['reply_style'])}",
              f"Plan: {label(PLAN_OPTIONS, s['plan'])}, agent budget {s['subagent_budget_tokens']:,} tokens per session",
              f"Code graphs: {'set up' if s.get('graphs') else 'not set up'}",
+             f"Jev: {'on' if s.get('jev') else 'off'}",
              f"Team sync: {'on, ' + s['team_sync']['repo'] + ' as ' + s['team_sync']['handle'] if s['team_sync']['enabled'] else 'off'}"]
     if s["plugins"]:
         lines.append("Plugins: " + ", ".join(f"{p['name']} ({p['status']})" for p in s["plugins"]))
