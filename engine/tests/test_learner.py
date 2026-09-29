@@ -83,3 +83,13 @@ def test_a_noisy_check_is_reported_to_the_owner_never_changed(home):
 
 def test_the_background_learner_respects_the_switch(monkeypatch):
     assert learner.start_in_background("/bin/true") is False
+
+
+def test_two_sessions_opening_together_start_one_learner(tmp_path, monkeypatch):
+    monkeypatch.setenv("NODARIS_HARNESS_HOME", str(tmp_path / "h"))
+    monkeypatch.delenv("NODARIS_HARNESS_NO_BG", raising=False)
+    started = []
+    monkeypatch.setattr(learner.subprocess, "Popen", lambda *a, **k: started.append(a))
+    assert learner.start_in_background("nodaris-harness") is True
+    assert learner.start_in_background("nodaris-harness") is False
+    assert len(started) == 1

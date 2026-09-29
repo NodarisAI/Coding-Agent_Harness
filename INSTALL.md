@@ -72,4 +72,4 @@ Uninstall restores each changed file from the backup taken at install. Your harn
 | An action is refused with a hash | It is consequential. If you want it to run, type `nodaris-harness approve HASH` in your own terminal. |
 | `Approval must be given by a person in their own terminal` | Approvals cannot come from the agent's shell. Open a separate terminal window and run the command there. |
 | The harness moved to another folder | Reinstall; hook commands carry the absolute path of the clone. |
-| Codex, Gemini, Cursor or OpenCode behaves differently from Claude Code | Those hosts are contract-tested, not live-verified; OpenCode has no prompt or stop hooks, so some gates are advisory there. See `docs/ARCHITECTURE.md`. |
+| Codex, Gemini, Cursor or OpenCode behaves differently from Claude Code | Those hosts are contract-tested, not live-verified. OpenCode has no prompt or stop hooks, so there the request router, the prompt personal-data check and prompt-time lesson recall do not run, and the done gate and the acceptance loop cannot hold a turn open; the guards, approvals and edit-time checks still apply. See `docs/ARCHITECTURE.md`. |

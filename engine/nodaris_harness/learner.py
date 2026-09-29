@@ -144,6 +144,10 @@ def run(use_agent=False, cwd=None):
 
     state.update(last_run=time.time(), last_applied=applied, last_report=report)
     json.dump(state, open(_state_path(), "w"))
+    try:
+        os.remove(os.path.join(os.path.dirname(_state_path()), "learner.lock"))
+    except OSError:
+        pass
     if report:
         with open(os.path.join(profile._dir(), "owner-report.md"), "w") as fh:
             fh.write("# Learner report for the owner\n\n" + "\n".join(f"- {x}" for x in report) + "\n")
@@ -151,9 +155,26 @@ def run(use_agent=False, cwd=None):
     return {"applied": applied, "report": report}
 
 
+def _claim_run(stale_hours=2):
+    """One learner at a time: sessions that open together must not both start it. A run takes minutes and records
+    last_run only when it ends, so the claim is a lock file created atomically, released after `stale_hours`."""
+    lock = os.path.join(os.path.dirname(_state_path()), "learner.lock")
+    try:
+        if time.time() - os.path.getmtime(lock) > stale_hours * 3600:
+            os.remove(lock)
+    except OSError:
+        pass
+    try:
+        os.makedirs(os.path.dirname(lock), exist_ok=True)
+        os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
+        return True
+    except OSError:
+        return False
+
+
 def start_in_background(cli):
     """Called at session start: run the learner detached when it is due, so nobody has to remember to."""
-    if os.environ.get("NODARIS_HARNESS_NO_BG") or not due():
+    if os.environ.get("NODARIS_HARNESS_NO_BG") or not due() or not _claim_run():
         return False
     try:
         subprocess.Popen([cli, "learn", "run", "--agent", "--quiet"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,

@@ -151,6 +151,37 @@ def _pre_tool(ev):
     return {"decision": "allow"}
 
 
+def _fresh(session, *parts):
+    """Keep only the context pieces not already given in this session. The same router brief, intake notice or lint
+    advice is never injected twice; after a compaction the record is cleared, so what was lost is given again."""
+    import hashlib
+    path = os.path.join(gates._sdir(session), "shown.json")
+    shown = gates._read(path, {})
+    shown = shown if isinstance(shown, dict) else {}
+    out = []
+    for text in parts:
+        if not text:
+            continue
+        key = hashlib.sha256(text.encode()).hexdigest()[:16]
+        if key in shown:
+            continue
+        shown[key] = 1
+        out.append(text)
+    if out:
+        try:
+            gates._write(path, shown)
+        except OSError:
+            pass
+    return out
+
+
+def forget_shown(session):
+    try:
+        os.remove(os.path.join(gates._sdir(session), "shown.json"))
+    except OSError:
+        pass
+
+
 def prompt(ev):
     pol = policy.load_policy()
     text = ev.get("prompt") or ""
@@ -167,7 +198,7 @@ def prompt(ev):
                                f"send that instead, or use synthetic data.\n\n{r.text}")}
     parts = []
     decision = router.route(text)
-    parts.append(router.brief(decision, CLI))
+    parts.append(router.brief(decision, CLI))   # given once per session per route; see _fresh
     if signals.is_correction(text):
         signals.record(ev["session_id"], "correction", text, playbook=decision["playbook"])
     elif not decision["playbook"]:
@@ -180,7 +211,7 @@ def prompt(ev):
     if res:
         parts.append(_context_of(res[1]))
     parts.append(memory.recall_for_prompt(ev["session_id"], ev["cwd"], text))
-    return {"decision": "allow", "context": "\n\n".join(p for p in parts if p), "route": decision}
+    return {"decision": "allow", "context": "\n\n".join(_fresh(ev["session_id"], *parts)), "route": decision}
 
 
 def post_tool(ev):
@@ -206,7 +237,7 @@ def post_tool(ev):
         parts.append(designlint.advice(ti.get("file_path") or "", written))
     if ev["tool_name"] in EDIT_TOOLS:
         parts.append(memory.recall_for_file(ev["session_id"], ev["cwd"], (ev.get("tool_input") or {}).get("file_path")))
-    return {"decision": "allow", "context": "\n\n".join(p for p in parts if p)}
+    return {"decision": "allow", "context": "\n\n".join(_fresh(ev["session_id"], *parts))}
 
 
 def stop(ev):
@@ -249,6 +280,8 @@ def handle(ev):
             except Exception:  # noqa: BLE001
                 outcome = {"decision": "allow"}
         elif name == "SessionStart":
+            if ev.get("source") in ("compact", "resume"):
+                forget_shown(ev["session_id"])
             ctx = compact.restore(ev["session_id"]) if ev.get("source") in ("compact", "resume") else ""
             learned = profile.summary() if ev.get("source") in (None, "startup", "clear") else ""
             if ev.get("source") in (None, "startup") and not onboard.is_onboarded() and onboard.claim_first_offer():

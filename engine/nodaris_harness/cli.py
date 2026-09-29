@@ -171,10 +171,15 @@ def cmd_doctor(a):
         m = json.load(open(mp))
         for f in m["files"]:
             present = os.path.exists(f["path"])
-            ok &= present
-            print(f"  {'ok ' if present else 'MISSING'} {f['path']}")
+            text = open(f["path"], errors="ignore").read() if present else ""
+            wired = present and (f["kind"] != "json-hooks" or "nodaris-harness" in text) and \
+                (f["kind"] != "text-block" or hosts.BEGIN in text)
+            ok &= wired
+            print(f"  {'ok ' if wired else 'MISSING' if not present else 'CHANGED'} {f['path']}"
+                  + ("" if wired or not present else " (the harness entries were removed; run the installer again)"))
     else:
-        print("  not installed for this host (the probes below still test the engine)")
+        ok = False
+        print("  NOT INSTALLED for this host: run `python3 install.py` (the probes below still test the engine)")
     pol = policy.load_policy()
     print(f"Policy {pol['version']} sha256 {pol['_sha256'][:16]} ({'signed' if pol.get('signed') else 'unsigned draft'})")
     if host == "git":

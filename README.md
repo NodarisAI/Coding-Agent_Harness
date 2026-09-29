@@ -1,24 +1,41 @@
 # Nodaris coding-agent harness
 
-The harness is a set of rules, checks and skills that sits inside the coding agent you already use (Claude Code, Codex, Gemini CLI, Cursor or OpenCode). It makes that agent build software the way a careful healthcare engineering team would: it keeps patient data and secrets out of places they should not go, asks you before anything consequential happens, and does not call work done until there is evidence.
+**Your coding agent, with the habits of a senior engineering team.** The harness installs into the coding agent you already use (Claude Code, Codex, Gemini CLI, Cursor or OpenCode) and changes how it works on every task: it plans before it edits, proves its work before it calls it done, keeps secrets and personal data where they belong, asks before anything it cannot undo, and remembers what went wrong last time. It is built for any software: web apps, services, scripts, websites and video. Teams that handle patient or payment data get extra checks on top.
+
+## What changes when you use it
+
+| You ask for | Plain agent | With the harness |
+|---|---|---|
+| "Fix the export button" | Edits the first file that looks right and says it is fixed | Finds the cause, writes a failing test, fixes it, runs the checks, and shows you the passing output |
+| "Add sign-in to the admin page" | Writes the feature in one pass | Writes a short spec and threat model first, builds it test-first, and has a separate reviewer check the diff |
+| "Clean up the old build folders" | Runs `rm -rf` | Moves them to a trash you can restore from |
+| "Deploy it" | Runs the deploy | Stops and asks you to approve that exact command once |
+| A long session with helper agents | Helpers work without your context and spend tokens freely | Helpers get the project's rules and design system, report back at checkpoints, and stay inside a token budget you can see in a live panel |
+| The same mistake next week | Makes it again | Recalls the lesson it recorded, and shares it with your team if you opted in |
 
 ## What it does for you
 
-- Stops the agent from reading secrets, writing a real credential into a file or command, running a destructive delete outside a trash folder, or skipping safety checks.
-- Sends the agent's first edit on `main`, `master`, `prod`, `production`, `staging` or `release` back with instructions to make a branch first; you can override by asking again.
-- Asks you to approve each push, deploy, message or other consequential action before it runs.
-- Replaces patient identifiers with realistic stand-ins before text leaves your machine.
-- Picks the right procedure for each request (bug fix, new feature, investigation, security check, release) so you do not have to know which step comes next.
-- Will not let the agent call a change done until a check has passed after the last edit.
-- Remembers lessons from mistakes so they are not repeated.
-- Prints a receipt of what a session actually proved, for people who do not read code.
+- **Plans, then builds.** Each request is routed to the right procedure (bug fix, feature, investigation, security check, release, video) with the steps in order.
+- **Proves it.** A coding turn cannot end until a check passed after the last edit, and `nodaris-harness receipt` prints what a session proved for people who do not read code. For a long job, `nodaris-harness ready --arm` keeps the agent working until an acceptance list passes.
+- **Keeps you safe without slowing you down.** Ordinary work runs untouched. Reading secret files, writing a real key into code, hidden commands and pushes to protected branches are refused; pushes, deploys and messages wait for your approval; recursive deletes go to a trash.
+- **Protects personal data.** Personal and patient identifiers are replaced with realistic stand-ins before a log, error or file leaves your machine. (Patient data, called PHI, may only go to a model under a business associate agreement, the contract US health law requires.)
+- **Learns.** Lessons from mistakes are recalled when the same situation returns; a background learner adapts to how you work, and every change it makes is shown and reversible.
+- **Understands the codebase.** Optional code graphs let the agent answer "what calls this" and "what breaks if this changes" without reading every file.
+- **Shows what it is doing.** A live side panel and status line show tokens spent, helper agents, recalled memories and files touched.
+- **Sets itself up once.** A short, animated onboarding on first use, then never again unless you ask.
+
+A hook is a small command your coding agent runs before and after each action; the harness uses hooks to check each action as it happens.
 
 ```
-  you ──► your coding agent ──► tool call ──► harness hook ──► routine: runs and is recorded
-                                                     │        ├► consequential: waits for your approval
-                                                     │        └► prohibited: refused with the reason
-                                                     └► rules, skills, lessons and gates added to the agent's context
+  you ──► your coding agent ──► action ──► harness hook ──► routine: runs and is recorded
+                                                  │        ├► consequential: waits for your approval
+                                                  │        └► prohibited: refused with the reason
+                                                  └► the right procedure, lessons and checks added to the agent's context
 ```
+
+## Who it is for
+
+Nodaris AI staff and contractors, and partners Nodaris AI authorises in writing. The installer asks whether you are on the Nodaris team: a yes turns on the healthcare pack and offers team sync and the company's own context plugin; a no installs the harness on its own, with nothing shared.
 
 ## Install in three steps
 
@@ -43,7 +60,7 @@ The agent follows [AGENTS.md](AGENTS.md): it explains what will change, asks you
 - **Harness home:** `~/.nodaris-harness` holds approvals, recorded sessions, lessons, your profile and install backups. It never leaves your machine unless you opt in to team sync.
 - **Repositories you work in:** shared lessons in `.nodaris-harness/lessons.jsonl`, committed only if you choose to.
 
-To undo: `bin/nodaris-harness uninstall --host claude` (once per agent). Files are restored from the backup taken at install. `python3 install.py --uninstall` will do this for every agent once the installer lands.
+To undo: `python3 install.py --uninstall` removes the harness from every agent it was installed in, and each settings file is restored from the backup taken at install. To remove it from one agent, run `bin/nodaris-harness uninstall --host claude`.
 
 ## Packs
 
@@ -71,7 +88,11 @@ To undo: `bin/nodaris-harness uninstall --host claude` (once per agent). Files a
 | `nodaris-harness statusline` | One-line version of the same numbers for Claude Code's status line; added at install only if you have none of your own, removed at uninstall |
 | `nodaris-harness trash <paths>` (`--list`, `--restore ID`, `--empty DAYS`) | Reversible delete: moves files to the harness trash instead of removing them |
 | `nodaris-harness budget --add N` | Raises your per-session subagent token budget |
+| `nodaris-harness ready` (`--arm` to loop) | Are we done? Runs the repository's acceptance list and names what fails and what waits on a person |
+| `nodaris-harness graph` (`--install` first) | Builds the code graphs for the current repository |
+| `nodaris-harness onboard` | Runs the onboarding again, for example to change packs or turn team sync on |
 | `nodaris-harness sync --dry-run` | Shows what team sync would share, without sending it |
+| `nodaris-harness team-intake` | For maintainers: merges team members' shared lessons into the memory vault for review |
 
 If `nodaris-harness` is not on your path, run it as `~/.nodaris-harness-src/bin/nodaris-harness`.
 

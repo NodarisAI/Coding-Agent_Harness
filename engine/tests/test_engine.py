@@ -91,3 +91,17 @@ def test_lessons_are_recalled_once_by_prompt_and_by_file(env, tmp_path):
 def test_a_lesson_never_stores_patient_identifiers(env):
     lesson, path = memory.add(env["_proj"], "member id W123456789 failed eligibility", "check the payer id first")
     assert "W123456789" not in open(path).read()
+
+
+def test_the_same_router_brief_is_not_repeated_within_a_session(tmp_path, monkeypatch):
+    monkeypatch.setenv("NODARIS_HARNESS_HOME", str(tmp_path / "h"))
+    monkeypatch.setenv("NODARIS_HARNESS_NO_BG", "1")
+    from nodaris_harness import dispatch
+    ev = {"hook_event_name": "UserPromptSubmit", "session_id": "r1", "cwd": str(tmp_path)}
+    first = dispatch.handle({**ev, "prompt": "fix the bug where the export button crashes"})
+    again = dispatch.handle({**ev, "prompt": "fix the bug where the export button still crashes on save"})
+    assert "Harness router" in first.get("context", "")
+    assert "Harness router" not in again.get("context", "")
+    dispatch.handle({"hook_event_name": "SessionStart", "session_id": "r1", "cwd": str(tmp_path), "source": "compact"})
+    after = dispatch.handle({**ev, "prompt": "fix the bug where the export button crashes"})
+    assert "Harness router" in after.get("context", "")

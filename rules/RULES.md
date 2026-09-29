@@ -30,9 +30,10 @@ Every tool call is classified by the harness before it runs, from a versioned po
 ## The harness pipeline (hooks enforce it; the skills say how)
 - **Intake:** the first prompt of a session carries a repo card with the verify commands. A request that names no
   file, symbol or command is a description, not a spec: follow the `spec-first` skill and write the brief before
-  editing. A request that touches patient data, tenants, auth, money, uploads or a model gets the
-  `healthcare-domain` and `self-attack` skills. A request for a new application that will hold patient, claim or
-  practice data gets the `healthcare-app-blueprint` skill: its foundations and their proofs come before the feature.
+  editing. A request that touches personal data, tenants, auth, money, uploads or a model gets the `self-attack`
+  skill<!-- pack:healthcare -->, and the `healthcare-domain` skill when patient or claim data is involved<!-- /pack -->.
+  <!-- pack:healthcare -->A request for a new application that will hold patient, claim or practice data gets the
+  `healthcare-app-blueprint` skill: its foundations and their proofs come before the feature.<!-- /pack -->
 - **Sensitive file, unannounced:** the first edit to an auth, tenant, patient or payment file brings the same security
   procedure even when the prompt did not mention it.
 - **While writing:** the PHI lint reports patient fields in log lines, exception text in logs and realistic

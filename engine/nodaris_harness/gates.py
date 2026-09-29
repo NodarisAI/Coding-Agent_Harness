@@ -53,7 +53,9 @@ def save_route(session, decision):
     state = _read(path, {})
     state.setdefault("started", time.time())
     if decision.get("playbook"):
-        state["playbook"], state["overlays"] = decision["playbook"], decision.get("overlays", [])
+        # Sensitive areas seen once stay on for the session, so a later plain prompt cannot drop a gate.
+        state["playbook"] = decision["playbook"]
+        state["overlays"] = sorted(set(state.get("overlays") or []) | set(decision.get("overlays") or []))
     _write(path, state)
 
 

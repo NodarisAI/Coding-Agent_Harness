@@ -5,7 +5,7 @@ file existed, and a byte-for-byte backup. Uninstall removes only what the harnes
 names this harness, the marked block in a rules file, the skill folders it copied) and, when nothing else changed
 in a file since the install, restores the backup bytes exactly. `--dry-run` prints the diff and writes nothing.
 """
-import difflib, json, os, shutil, sys, time
+import difflib, json, os, re, shutil, sys, time
 
 from .policy import home
 
@@ -197,9 +197,16 @@ def _without_block(raw):
     return (before.rstrip("\n") + ("\n" if before.strip() else "") + after.lstrip("\n")).encode()
 
 
-def rules_text(root=None):
+def rules_text(root=None, packs=None):
+    """The rules file for this install. Text marked for a pack (<!-- pack:NAME -->...<!-- /pack -->) is kept only when
+    that pack is installed, so a general install never names skills it does not have."""
     with open(os.path.join(root or ENGINE_ROOT, "rules", "RULES.md")) as fh:
-        return fh.read()
+        text = fh.read()
+    if packs is None:
+        packs = _harness_setting("packs", None) or list(PACKS)
+    def keep(m):
+        return (m.group(1) or "") + m.group(3) if m.group(2) in packs else ""
+    return re.sub(r"(\n[ \t]*)?<!-- pack:([a-z]+) -->(.*?)<!-- /pack -->", keep, text, flags=re.S)
 
 
 def opencode_plugin(root=None):

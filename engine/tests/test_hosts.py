@@ -255,3 +255,10 @@ def test_deny_rules_can_be_turned_off(tmp_path, monkeypatch):
     cfg = tmp_path / ".claude"
     hosts.install("claude", user_home=str(tmp_path), config_dir=str(cfg), skills=False)
     assert "permissions" not in json.loads((cfg / "settings.json").read_text())
+
+
+def test_rules_name_healthcare_skills_only_for_healthcare_installs():
+    general, health = hosts.rules_text(packs=["core"]), hosts.rules_text(packs=["core", "healthcare"])
+    assert "healthcare-domain" not in general and "healthcare-app-blueprint" not in general
+    assert "healthcare-domain" in health and "healthcare-app-blueprint" in health
+    assert "pack:" not in general + health and "\n\n- **Sensitive file" not in general
