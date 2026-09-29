@@ -100,3 +100,12 @@ def test_a_command_the_person_already_has_is_never_replaced(tmp_path):
     assert str(local / "nodaris") not in made
     hosts.unlink_commands(home=str(tmp_path))
     assert (local / "nodaris").read_text() == "#!/bin/sh\necho mine\n"
+
+
+def test_a_dangling_link_from_a_moved_harness_is_repaired(tmp_path):
+    local = tmp_path / ".local" / "bin"
+    local.mkdir(parents=True)
+    os.symlink(str(tmp_path / "gone" / "bin" / "nodaris-harness"), str(local / "nodaris"))
+    made = hosts.link_commands(home=str(tmp_path))
+    assert str(local / "nodaris") in made
+    assert os.path.realpath(local / "nodaris") == os.path.realpath(hosts.bin_path())

@@ -52,10 +52,14 @@ def link_commands(home=None, dry_run=False):
         link = os.path.join(local, name)
         if os.path.islink(link) and os.path.realpath(link) == os.path.realpath(target):
             continue
-        if os.path.lexists(link):
+        stale = (os.path.islink(link) and not os.path.exists(link)
+                 and os.readlink(link).endswith(os.path.join("bin", "nodaris-harness")))   # a moved harness checkout
+        if os.path.lexists(link) and not stale:
             continue
         if not dry_run:
             os.makedirs(local, exist_ok=True)
+            if stale:
+                os.unlink(link)
             os.symlink(target, link)
         made.append(link)
     return made
