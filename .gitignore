@@ -26,3 +26,4 @@ settings.local.json
 .idea/
 .vscode/
 *.swp
+graphify-out/

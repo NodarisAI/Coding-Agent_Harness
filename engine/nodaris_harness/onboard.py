@@ -42,6 +42,9 @@ TEAM_SYNC_TEXT = ("Team sync shares your redacted lessons, the changes the learn
                   "usage counts with the Nodaris memory vault once a day, and brings the rest of the team's lessons "
                   "back into your recall, so everyone's agent learns from the same mistakes. It never shares code, "
                   "prompts, file contents or patient data.")
+GRAPH_TEXT = ("Code graphs let the agent answer \"what calls this\" and \"what breaks if this changes\" from a graph of the "
+              "repository instead of reading files one by one, which saves tokens and catches more. It installs two "
+              "open-source tools, code-review-graph and graphify, with uv, and connects them to Claude Code.")
 UNVERIFIED = "found by search, not verified"
 
 
@@ -242,6 +245,7 @@ def build(answers, which=None, runner=None, now=None):
                 "reversible_delete": _bool("reversible_delete", answers.get("reversible_delete", True)),
                 "branch_rule": _bool("branch_rule", answers.get("branch_rule", True)),
                 "deny_rules": _bool("deny_rules", answers.get("deny_rules", True)),
+                "graphs": _bool("graphs", answers.get("graphs", False)),
                 "statusline": _bool("statusline", answers.get("statusline", True)),
                 "onboarded_at": answers.get("onboarded_at") or (now or datetime.datetime.now(datetime.timezone.utc))
                 .replace(microsecond=0).isoformat()}
@@ -516,6 +520,10 @@ def app_questions():
          "options": _opts(STYLE_OPTIONS)},
         {"question": "Which Claude plan do you use?", "header": "Plan", "multiSelect": False,
          "options": _opts(PLAN_OPTIONS)},
+        {"question": "Set up code graphs, so the agent understands a repository before reading it file by file?",
+         "header": "Graphs", "multiSelect": False,
+         "options": [{"label": "Yes", "description": "Installs code-review-graph and graphify with uv, then connects them to Claude Code."},
+                     {"label": "No", "description": "Skip; run nodaris-harness graph --install later."}]},
         {"question": "Share redacted lessons with the Nodaris team? Only for Nodaris team members.", "header": "Team sync",
          "multiSelect": False,
          "options": [{"label": "Yes", "description": "Lessons, learner changes and anonymous counts; never code, prompts, files or patient data."},
@@ -527,7 +535,8 @@ def app_questions():
 def app_instructions(cli_path):
     q1, q2 = (json.dumps(r, separators=(",", ":")) for r in app_questions())
     example = json.dumps({"company": "Example Health", "is_nodaris": "No", "use": ["Healthcare apps"], "role": "Engineer",
-                          "hosts": ["Claude Code", "Codex"], "reply_style": "Explain", "plan": "Max", "team_sync": "No"},
+                          "hosts": ["Claude Code", "Codex"], "reply_style": "Explain", "plan": "Max", "graphs": "Yes",
+                          "team_sync": "No"},
                          separators=(",", ":"))
     return (
         "The Nodaris harness is installed, but this person has not finished onboarding. Before any other work, "
@@ -541,6 +550,8 @@ def app_instructions(cli_path):
         f"5. Run `{cli_path} onboard --discover \"<company>\"`. Offer each plugin it lists with its install commands. "
         "Run those exact commands only after the person says yes to that plugin, and report each exit code. "
         "Say plainly when a result is marked as found by search and not verified.\n"
+        f"6. If they said yes to code graphs, run `{cli_path} graph --install`, report each exit code, then run "
+        f"`{cli_path} graph` in the repository they are working in.\n"
         "If the person would rather skip it, stop and tell them they can run "
         f"`{cli_path} onboard` whenever they like. This is the only time the harness offers onboarding; it will not "
         "ask again in later sessions.\n"
@@ -592,6 +603,16 @@ def interactive(ui=None, which=None, runner=None, show_splash=True, save_setting
         ui.panel("Team sync", TEAM_SYNC_TEXT, stream)
         team = ui.confirm("Turn on team sync?", bool((prev.get("team_sync") or {}).get("enabled", False)), stream)
 
+    graphs = False
+    try:
+        from . import graph as _graph
+        cmds = _graph.install_commands(which)
+    except Exception:  # noqa: BLE001
+        cmds = None
+    if cmds is not None:
+        ui.panel("Code graphs", GRAPH_TEXT + (" Commands: " + "; ".join(cmds) if cmds else " Both are already installed."), stream)
+        graphs = ui.confirm("Set up code graphs?", bool(prev.get("graphs", True)), stream)
+
     plugins = []
     search = False
     if which("gh") and not registry_match(company):
@@ -604,7 +625,8 @@ def interactive(ui=None, which=None, runner=None, show_splash=True, save_setting
                         "status": "accepted" if yes else "declined"})
 
     settings = build({"company": company, "is_nodaris": is_nodaris, "use": uses, "role": role, "hosts": hosts,
-                      "reply_style": style, "plan": plan, "team_sync": team, "plugins": plugins}, which=which, runner=runner)
+                      "reply_style": style, "plan": plan, "team_sync": team, "plugins": plugins, "graphs": graphs},
+                     which=which, runner=runner)
     ui.panel("Summary", summary_lines(settings), stream)
     if not ui.confirm("Save these settings?", True, stream):
         ui.line("Nothing was saved. Run the onboarding again when you are ready.", stream)
@@ -612,6 +634,10 @@ def interactive(ui=None, which=None, runner=None, show_splash=True, save_setting
     if save_settings:
         save(settings)
         _install_accepted(settings, suggestions, runner, stream)
+        if settings.get("graphs"):
+            from . import graph as _graph
+            cmds = (_graph.install_commands(which) or []) + _graph.wire_commands(which, runner)
+            _graph.run_commands(cmds, runner, write=lambda t: ui.line(t, stream))
         ui.line(f"Settings saved to {settings_path()}.", stream)
     return settings
 
@@ -638,6 +664,7 @@ def summary_lines(s):
              f"Coding agents: {', '.join(label(HOST_OPTIONS, h) for h in s['hosts'])}",
              f"Replies: {label(STYLE_OPTIONS, s['reply_style'])}",
              f"Plan: {label(PLAN_OPTIONS, s['plan'])}, agent budget {s['subagent_budget_tokens']:,} tokens per session",
+             f"Code graphs: {'set up' if s.get('graphs') else 'not set up'}",
              f"Team sync: {'on, ' + s['team_sync']['repo'] + ' as ' + s['team_sync']['handle'] if s['team_sync']['enabled'] else 'off'}"]
     if s["plugins"]:
         lines.append("Plugins: " + ", ".join(f"{p['name']} ({p['status']})" for p in s["plugins"]))

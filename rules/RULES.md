@@ -70,6 +70,7 @@ Understand the problem and trace the code it touches first. Then stop at the fir
 No interface with one implementation, no configuration for a value that never changes, no scaffolding for later. A bug fix goes where every caller routes through, not only on the path the report names. Never cut to save lines: input validation, authorization checks, audit records, patient-data handling, error handling at trust boundaries and the tests that prove them always stay.
 
 ## Working efficiently
+- For a question that crosses files (where is this handled, what calls it, what breaks if it changes), ask the code graph first when it is connected: the code-review-graph tools, and `graphify-out/GRAPH_REPORT.md` when it exists. Build them with `nodaris-harness graph`.
 - Read only what the task needs: find the symbol with grep, then read that range. Read a whole file only when it is short or you will edit most of it.
 - When adding entries to an existing table, list or module, copy the neighbouring entries' exact style: length, phrasing, casing, punctuation. Measure it before writing.
 - Run the full check suite once at the end, and only the affected tests while iterating. Every extra full run is minutes and tokens with no new information.
@@ -91,7 +92,8 @@ No interface with one implementation, no configuration for a value that never ch
 - Headless runs: background commands stop when the turn ends. Run anything you need the result of in the foreground.
 
 ## Memory loop
-The harness recalls recorded lessons on each prompt and when a file they name is edited. Read the cited source before re-deriving anything; treat verified lessons as binding unless the code proves them stale. End every task that taught something by recording the lesson: `nodaris-harness lessons add --when "..." --do "..." --why "..." [--files GLOB] [--keywords a,b]` (it goes into the repository's `.nodaris-harness/lessons.jsonl`, which the team shares through git).
+The harness recalls recorded lessons on each prompt and when a file they name is edited. Read the cited source before re-deriving anything; treat verified lessons as binding unless the code proves them stale. End every task that taught something by recording the lesson: `nodaris-harness lessons add --when "..." --do "..." --why "..." [--files GLOB] [--keywords a,b]` (it goes into the repository's `.nodaris-harness/lessons.jsonl`, which the team shares through git). Personal lessons (`--scope user`) reach the rest of the team through the memory vault when team sync is on.
+- **Are we done?** When a repository has an acceptance list (`.nodaris/acceptance.json`), run `nodaris-harness ready` before saying the work is finished, and `nodaris-harness ready --arm` for a long run, so the harness keeps you working until every check passes or only a person's steps remain.
 
 ## No AI fingerprint
 Nothing committed, pushed or posted carries a mark of AI authorship: no "Co-Authored-By: Claude", no "Generated with" footer, no bot-style signature in code, comments, commits, PRs or docs. Code reads as if a person wrote it.

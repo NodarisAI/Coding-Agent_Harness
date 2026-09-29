@@ -13,6 +13,7 @@
   nodaris-harness gitcheck --stage pre-commit|pre-push (called by the git hooks)
   nodaris-harness policy [--explain CMD]               the policy version and hash, or how a command is classed
   nodaris-harness sync [--dry-run]                     share redacted lessons and counts with the memory vault (opt-in)
+  nodaris-harness graph [PATH] [--install] [--dry-run]  code graphs: code-review-graph and graphify for a repository
   nodaris-harness team-intake [--vault DIR] [--dry-run] maintainers: merge members' branches into a vault review branch
   nodaris-harness ready [--manifest F] [--arm|--disarm] are we done? runs the acceptance list; --arm makes the Stop hook ask
 """
@@ -385,6 +386,25 @@ def cmd_sync(a):
     return code
 
 
+def cmd_graph(a):
+    from . import graph
+    if a.install:
+        cmds = graph.install_commands()
+        if cmds is None:
+            print("Install uv first (https://docs.astral.sh/uv/), then run this again.", file=sys.stderr)
+            return 1
+        cmds = cmds + ([] if a.dry_run else graph.wire_commands())
+        if a.dry_run:
+            print("\n".join(cmds) if cmds else "The graph tools are already installed.")
+            return 0
+        if cmds and not graph.run_commands(cmds):
+            return 1
+        print("The graph tools are installed and connected.")
+        if not a.path:
+            return 0
+    return graph.build(a.path or os.getcwd(), dry_run=a.dry_run)
+
+
 def cmd_team_intake(a):
     from . import sync
     code, msg = sync.intake(os.path.expanduser(a.vault), dry_run=a.dry_run, bump=not a.no_bump)
@@ -482,6 +502,9 @@ def main(argv=None):
     s = sub.add_parser("sync", help="share redacted lessons and counts with your team (opt-in)")
     s.add_argument("--dry-run", action="store_true"); s.add_argument("--days", type=int, default=30)
     s.add_argument("--quiet", action="store_true"); s.set_defaults(fn=cmd_sync)
+    s = sub.add_parser("graph", help="install the code graph tools, or build both graphs for a repository")
+    s.add_argument("path", nargs="?"); s.add_argument("--install", action="store_true")
+    s.add_argument("--dry-run", action="store_true"); s.set_defaults(fn=cmd_graph)
     s = sub.add_parser("team-intake", help="maintainers: merge members' team memory branches into a vault review branch")
     s.add_argument("--vault", default="~/Nodaris-Memory-Vault"); s.add_argument("--dry-run", action="store_true")
     s.add_argument("--no-bump", action="store_true"); s.set_defaults(fn=cmd_team_intake)
