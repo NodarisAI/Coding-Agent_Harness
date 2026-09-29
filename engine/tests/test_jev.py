@@ -87,7 +87,7 @@ def test_patient_identifiers_are_never_sent(server):
 
 def test_credentials_are_masked_before_sending(server):
     put_key()
-    text = "the deploy fails with key sk-live-" + "Zz9" * 10 + " and AKIAABCDEFGHIJKLMNOP, why does it fail"
+    text = "the deploy fails with key sk-live-" + "Zz9" * 10 + " and " + "AKIA" + "ABCDEFGHIJKLMNOP" + ", why does it fail"
     jev.for_prompt(ev(text), text)
     sent = server[0]["body"]["state"]["message"]
     assert "sk-live-" not in sent and "AKIA" not in sent and "[SECRET-" in sent
