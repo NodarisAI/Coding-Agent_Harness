@@ -89,4 +89,4 @@ Members of the Nodaris team can opt in to team sync. Once a day it shares redact
 - [docs/PRD.md](docs/PRD.md) and [docs/SPEC-v3.md](docs/SPEC-v3.md): requirements and specification
 - [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md), [docs/TEAM-DATA.md](docs/TEAM-DATA.md), [CHANGELOG.md](CHANGELOG.md)
 
-This repository is private. Licence terms are in [LICENSE](LICENSE); credits for studied and vendored work are in `packs/core/vendor/pstack/NOTICE.md` and `packs/core/vendor/SOURCE.json`.
+Proprietary to Nodaris AI; see [LICENSE](LICENSE). Nodaris AI staff, contractors and people Nodaris AI authorises in writing may use it for Nodaris AI work. Credits for the open-source projects it adapts or learned from are in [NOTICE.md](NOTICE.md).
