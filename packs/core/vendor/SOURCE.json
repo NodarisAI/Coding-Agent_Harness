@@ -1,0 +1,55 @@
+{
+ "guards": {
+  "secret-guard.py": {
+   "source_sha256": "7c0cb66aff146ce997ebe9188475a60c7b5d4668ba203f06f45f7e5572f95c8f",
+   "substitutions": 7
+  },
+  "destructive-guard.py": {
+   "source_sha256": "cd9771d670b07e23630aff8b27d63ce603eabb8293e3d391206151a0ffb05f1f",
+   "substitutions": 4
+  }
+ },
+ "skills": {
+  "secure-build": {
+   "source_sha256": "3ba2300c91381d231dc2d773cebcfece23e8779b072135f2e7915167f00e77fd",
+   "substitutions": 4
+  },
+  "pocock-tdd": {
+   "source_sha256": "6f5d3fb260526665b49a3d5548c0e03687eeddee0ebd3f3bfe91851f5eecff05",
+   "substitutions": 0
+  },
+  "pocock-triage": {
+   "source_sha256": "9368a43ef642904dd8bbd7f69c7dc79fcf274cb3143c02fa919c991270be34d2",
+   "substitutions": 0
+  },
+  "pocock-grill-me": {
+   "source_sha256": "05efdef4ca7d5853b0b19ef8308795c2a23028e956da6159a9180c7c35063232",
+   "substitutions": 0
+  },
+  "build-agent-reliability": {
+   "source_sha256": "4740e020945c4a8127db89ffb8ac6e75ac47dfacb3105407602cf856f12b3714",
+   "substitutions": 0
+  },
+  "threejs-webgl-scenes": {
+   "source_sha256": "4f84b865caacaf0b2bbf58bacb376f0f3b98b9cb54204332b701537dccf24107",
+   "substitutions": 0
+  },
+  "gsap-scroll-motion": {
+   "source_sha256": "1ccc2f5885fcdd4b3902763d27a2defdb015325fc60389f97a12b9d9ea291551",
+   "substitutions": 0
+  },
+  "motion-design-direction": {
+   "source_sha256": "4152d5fedb0997def680ab660fcf58398d42e02a6a0119c506c342f16f9c4096",
+   "substitutions": 0
+  },
+  "motion-web-pipeline": {
+   "source_sha256": "3fc60009d700f9c5102ab27ca0e2c0a4fe33b5ebac6cab3d2a57c837b49c6424",
+   "substitutions": 0
+  },
+  "web-motion-primitives": {
+   "source_sha256": "1b9a433fe3c4b43cea3aa0a6fd73340ee2900bdf79db5091167b4a7aa4218d89",
+   "substitutions": 0
+  }
+ },
+ "deny": 71
+}

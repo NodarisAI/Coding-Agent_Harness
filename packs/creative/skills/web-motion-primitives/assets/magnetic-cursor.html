@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Magnetic Cursor &amp; Buttons</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { min-height:100svh; background:#08080a; color:#fff; font-family: ui-sans-serif, system-ui, sans-serif;
+         display:grid; place-items:center; gap:26px; }
+
+  /* Two rules make custom cursors survivable rather than annoying:
+     1. never hide the native cursor on touch or reduced-motion, and
+     2. keep every interactive element keyboard-focusable and hit-testable —
+        the custom dot is decoration layered on top, never the hit target. */
+  .cursor {
+    position: fixed; top: 0; left: 0; width: 10px; height: 10px; border-radius: 50%;
+    background: #fff; pointer-events: none; z-index: 9999;
+    transform: translate(-50%, -50%); mix-blend-mode: difference;
+    transition: width .3s ease, height .3s ease, opacity .3s ease;
+  }
+  .cursor--ring {
+    width: 40px; height: 40px; background: transparent;
+    border: 1px solid rgba(255,255,255,.55);
+    transition: width .35s cubic-bezier(.22,1,.36,1), height .35s cubic-bezier(.22,1,.36,1), opacity .3s;
+  }
+  body.has-custom-cursor { cursor: none; }
+  body.is-hovering .cursor        { width: 4px;  height: 4px; }
+  body.is-hovering .cursor--ring  { width: 76px; height: 76px; }
+
+  .magnetic {
+    position: relative; padding: 20px 40px; border-radius: 999px; border: 1px solid rgba(255,255,255,.22);
+    background: rgba(255,255,255,.06); color:#fff; font-size: 16px; letter-spacing: -.01em; cursor: pointer;
+    will-change: transform;
+  }
+  .magnetic--solid { background: #fff; color:#0a0a0b; border-color:#fff; }
+  .magnetic:focus-visible { outline: 2px solid #7dd3fc; outline-offset: 4px; }
+  .magnetic__label { display: inline-block; will-change: transform; }
+
+  h1 { font-size: clamp(30px,5vw,64px); letter-spacing:-.04em; text-align:center; }
+  .hint { opacity:.45; font-size:13px; }
+</style>
+</head>
+<body>
+
+<h1>Move slowly toward a button</h1>
+<div style="display:flex; gap:14px; flex-wrap:wrap; justify-content:center">
+  <button class="magnetic magnetic--solid" data-magnetic><span class="magnetic__label">Start a build</span></button>
+  <button class="magnetic" data-magnetic data-strength="0.5"><span class="magnetic__label">See the system</span></button>
+</div>
+<p class="hint">Tab through them too — focus styles survive.</p>
+
+<script>
+(function () {
+  const fine   = matchMedia('(pointer: fine)').matches;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!fine || reduce) return;   // touch + reduced-motion keep the native cursor
+
+  document.body.classList.add('has-custom-cursor');
+
+  const dot  = Object.assign(document.createElement('div'), { className: 'cursor' });
+  const ring = Object.assign(document.createElement('div'), { className: 'cursor cursor--ring' });
+  document.body.append(dot, ring);
+
+  let mx = innerWidth / 2, my = innerHeight / 2;
+  let rx = mx, ry = my;
+
+  addEventListener('pointermove', (e) => { mx = e.clientX; my = e.clientY; }, { passive: true });
+
+  // The dot is pinned to the pointer; the ring trails it with a lerp. That lag
+  // is the entire read of "premium" here — matched speeds look like a bug.
+  (function frame() {
+    rx += (mx - rx) * 0.16;
+    ry += (my - ry) * 0.16;
+    dot.style.transform  = `translate(${mx}px, ${my}px) translate(-50%,-50%)`;
+    ring.style.transform = `translate(${rx}px, ${ry}px) translate(-50%,-50%)`;
+    requestAnimationFrame(frame);
+  })();
+
+  // Magnetism has to be evaluated at the document level, not per-element.
+  // Binding pointermove to the button itself only fires once the pointer is
+  // already inside it — that is hover-wobble, and it misses the entire point:
+  // the button should reach out and meet a cursor that is still approaching.
+  const magnets = [...document.querySelectorAll('[data-magnetic]')].map((el) => ({
+    el,
+    label:    el.querySelector('.magnetic__label') || el,
+    strength: Number(el.dataset.strength || 0.35),
+    // Attraction field extends beyond the button. Too small and nothing feels
+    // magnetic; too large and unrelated buttons twitch as you cross the page.
+    radius:   Number(el.dataset.radius || 130),
+    engaged:  false,
+    // Currently applied translation. Without tracking this, getBoundingClientRect
+    // returns the *displaced* box and the button measures distance from where it
+    // already moved to — a feedback loop where it chases its own tail and never
+    // settles. Subtracting the known offset recovers the true rest geometry.
+    tx: 0, ty: 0
+  }));
+
+  const settle = (m) => {
+    m.engaged = false;
+    m.tx = m.ty = 0;
+    m.el.style.transition = m.label.style.transition = 'transform .55s cubic-bezier(.22,1,.36,1)';
+    m.el.style.transform  = m.label.style.transform  = 'translate(0,0)';
+    setTimeout(() => { m.el.style.transition = m.label.style.transition = ''; }, 560);
+  };
+
+  addEventListener('pointermove', (e) => {
+    let anyHover = false;
+
+    magnets.forEach((m) => {
+      const r  = m.el.getBoundingClientRect();
+      const cx = r.left + r.width / 2  - m.tx;   // rest centre, not current
+      const cy = r.top  + r.height / 2 - m.ty;
+      const dx = e.clientX - cx;
+      const dy = e.clientY - cy;
+      // Distance to the button's edge, not its centre — otherwise a wide
+      // button engages later than a narrow one sitting the same distance away.
+      const dist = Math.hypot(
+        Math.max(0, Math.abs(dx) - r.width  / 2),
+        Math.max(0, Math.abs(dy) - r.height / 2)
+      );
+
+      if (dist > m.radius) { if (m.engaged) settle(m); return; }
+
+      // Falloff: full pull at the edge, nothing at the rim of the field. The
+      // eased curve is what stops the button snapping when you cross the line.
+      const pull = Math.pow(1 - dist / m.radius, 1.6);
+      if (!m.engaged) { m.engaged = true; m.el.style.transition = m.label.style.transition = ''; }
+
+      m.tx = dx * m.strength * pull;
+      m.ty = dy * m.strength * pull;
+      m.el.style.transform    = `translate(${m.tx}px, ${m.ty}px)`;
+      // Label lags the button slightly — a second-order offset that reads as
+      // weight. Without it the whole button just slides and looks rigid.
+      m.label.style.transform = `translate(${m.tx * 0.45}px, ${m.ty * 0.45}px)`;
+
+      if (dist === 0) anyHover = true;   // pointer is actually over the button
+    });
+
+    document.body.classList.toggle('is-hovering', anyHover);
+  }, { passive: true });
+
+  // Keyboard users never fire pointer events, so make sure focus does not
+  // leave a button stranded mid-magnet from a previous mouse interaction.
+  magnets.forEach((m) => m.el.addEventListener('blur', () => settle(m)));
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WebGL Hero Plane — displaced texture</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background:#050507; color:#fff; font-family: ui-sans-serif, system-ui, sans-serif; }
+  .hero { position: relative; height: 100svh; overflow: hidden; }
+  #gl { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  /* Static fallback sits underneath. If WebGL is unavailable, blocked, or the
+     user prefers reduced motion, the canvas is simply never created and this
+     is what ships — a hero that still works rather than a black rectangle. */
+  .hero__fallback { position: absolute; inset: 0; background: center/cover
+      url("https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1800&q=80"); }
+  .hero__copy { position: relative; z-index: 2; height: 100%; display: grid; place-items: center; text-align: center; padding: 0 24px; }
+  h1 { font-size: clamp(40px, 9vw, 140px); font-weight: 500; letter-spacing: -.05em; line-height: .9;
+       text-shadow: 0 4px 60px rgba(0,0,0,.5); }
+  .spacer { height: 120svh; display: grid; place-items: center; opacity: .3; font-size: 12px;
+            letter-spacing: .2em; text-transform: uppercase; }
+</style>
+</head>
+<body>
+
+<section class="hero" data-gl-hero
+         data-texture="https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1600&q=80">
+  <div class="hero__fallback"></div>
+  <canvas id="gl"></canvas>
+  <div class="hero__copy"><h1>Signal<br>over noise</h1></div>
+</section>
+<div class="spacer">scroll — the surface reacts</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.180.0/build/three.module.js" } }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+const root   = document.querySelector('[data-gl-hero]');
+const canvas = document.getElementById('gl');
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Bail before touching WebGL at all. Creating a context and then discovering
+// it failed still costs memory and can log scary errors in the console.
+if (reduce || !window.WebGLRenderingContext) { canvas.remove(); }
+else { init(); }
+
+function init() {
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: true });
+  } catch (_) { canvas.remove(); return; }
+
+  // Clamping DPR is the single highest-leverage perf decision in a WebGL hero.
+  // An uncapped 3x retina display renders ~9x the pixels of 1x for a difference
+  // nobody can see through a blur — and it is what melts laptop fans.
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(root.clientWidth, root.clientHeight, false);
+
+  const scene  = new THREE.Scene();
+  // Orthographic + a plane that exactly fills clip space: this is a full-screen
+  // shader pass wearing a mesh costume. No camera maths, no FOV surprises.
+  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+  const uniforms = {
+    uTex:      { value: null },
+    uTime:     { value: 0 },
+    uScroll:   { value: 0 },
+    uPointer:  { value: new THREE.Vector2(0.5, 0.5) },
+    uCover:    { value: new THREE.Vector2(1, 1) }
+  };
+
+  const material = new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: /* glsl */`
+      varying vec2 vUv;
+      void main() { vUv = uv; gl_Position = vec4(position, 1.0); }
+    `,
+    fragmentShader: /* glsl */`
+      precision highp float;
+      varying vec2 vUv;
+      uniform sampler2D uTex;
+      uniform float uTime, uScroll;
+      uniform vec2  uPointer, uCover;
+
+      // Cheap value noise — enough character for a displacement field without
+      // paying for simplex. At hero scale the difference is invisible.
+      float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float noise(vec2 p){
+        vec2 i = floor(p), f = fract(p);
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(i), hash(i + vec2(1,0)), u.x),
+                   mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), u.x), u.y);
+      }
+
+      void main() {
+        // background-size: cover, in shader form. Without this the texture
+        // stretches on every aspect ratio that is not the image's own.
+        vec2 uv = (vUv - 0.5) * uCover + 0.5;
+
+        float n = noise(uv * 3.0 + uTime * 0.06);
+        vec2  d = vec2(n - 0.5) * (0.035 + uScroll * 0.09);
+
+        // Pointer pulls the field locally so the surface feels touchable.
+        float grab = smoothstep(0.55, 0.0, distance(vUv, uPointer));
+        d += (uPointer - vUv) * grab * 0.045;
+
+        // Sampling R/G/B at slightly different offsets is a one-line chromatic
+        // aberration — it is what makes the distortion read as optical.
+        float r = texture2D(uTex, uv + d * 1.06).r;
+        float g = texture2D(uTex, uv + d       ).g;
+        float b = texture2D(uTex, uv + d * 0.94).b;
+
+        vec3 col = vec3(r, g, b);
+        col *= 1.0 - uScroll * 0.35;                       // darken on scroll
+        // Keep the contrast curve gentle and gain-compensated. A plain
+        // col*col crush reads fine on a bright test image and then buries an
+        // already-dark hero into mud — verify this against your real asset.
+        col = mix(col, col * col * 1.6, 0.14);
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `
+  });
+
+  scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material));
+
+  const draw = () => renderer.render(scene, camera);
+
+  new THREE.TextureLoader().load(root.dataset.texture, (tex) => {
+    tex.colorSpace = THREE.SRGBColorSpace;
+    uniforms.uTex.value = tex;
+    fit(tex);
+    // Paint one frame immediately rather than waiting on the animation loop.
+    // A page that loads in a background tab, or restores from bfcache, has
+    // document.hidden === true — gate the *loop* on that and you ship a black
+    // rectangle that only fills in once the user happens to look at it.
+    draw();
+  });
+
+  function fit(tex) {
+    const t = tex || uniforms.uTex.value;
+    if (!t?.image) return;
+    const screen = root.clientWidth / root.clientHeight;
+    const image  = t.image.width / t.image.height;
+    uniforms.uCover.value.set(
+      screen > image ? 1 : image / screen,
+      screen > image ? screen / image : 1
+    );
+  }
+
+  addEventListener('resize', () => {
+    renderer.setSize(root.clientWidth, root.clientHeight, false);
+    fit();
+    draw();
+  });
+
+  addEventListener('pointermove', (e) => {
+    const r = root.getBoundingClientRect();
+    uniforms.uPointer.value.set(
+      (e.clientX - r.left) / r.width,
+      1.0 - (e.clientY - r.top) / r.height
+    );
+  }, { passive: true });
+
+  addEventListener('scroll', () => {
+    uniforms.uScroll.value = Math.min(1, scrollY / innerHeight);
+  }, { passive: true });
+
+  // Animate only while the hero is on screen. A WebGL loop left running behind
+  // three sections of scrolled content is pure battery drain for zero pixels.
+  // Note this gates *animation*, not the existence of a rendered frame — the
+  // canvas always holds a correct still, so nothing is ever visibly blank.
+  let visible = true;
+  new IntersectionObserver(([e]) => {
+    visible = e.isIntersecting;
+    if (visible) draw();
+  }, { threshold: 0 }).observe(root);
+
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) draw(); });
+
+  renderer.setAnimationLoop((t) => {
+    if (!visible || document.hidden) return;
+    uniforms.uTime.value = t * 0.001;
+    draw();
+  });
+}
+</script>
+</body>
+</html>

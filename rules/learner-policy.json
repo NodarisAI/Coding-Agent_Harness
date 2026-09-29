@@ -1,0 +1,8 @@
+{
+  "version": "0.1",
+  "description": "What the learner may change on its own, and what it may never touch. Read by profile.py; the learner cannot write this file.",
+  "auto_fields": ["style.brevity", "router_keywords", "lessons"],
+  "thresholds": {"correction_count": 3, "correction_sessions": 2, "keyword_prompts": 3, "gate_report": 5, "keyword_max_share": 0.2},
+  "report_only": ["gate"],
+  "never": ["rules/", "engine/", "pack/hooks/", "hooks/", "settings.json", "policy", "guard", "gate", "threshold", "MAX_BLOCKS"]
+}

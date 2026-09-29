@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Liquid Glass surface</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100svh; color: #fff; font-family: ui-sans-serif, system-ui, sans-serif;
+    background: #05060a url("https://images.unsplash.com/photo-1502134249126-9f3755a50d78?w=1800&q=80") center/cover fixed;
+    display: grid; place-items: center; gap: 28px; padding: 8vh 5vw;
+  }
+
+  /* Glass only reads as glass when there is something behind it worth
+     refracting. Over a flat fill it just looks like a grey box — put it over
+     video, imagery or a gradient mesh or don't use it at all. */
+  .glass {
+    position: relative;
+    width: min(92vw, 520px);
+    padding: 28px 30px 30px;
+    border-radius: 26px;
+    background: linear-gradient(135deg, rgba(255,255,255,.14), rgba(255,255,255,.05));
+    backdrop-filter: blur(22px) saturate(180%);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+    border: 1px solid rgba(255,255,255,.16);
+    box-shadow:
+      0 24px 70px rgba(0,0,0,.45),          /* cast shadow: sits it in space   */
+      inset 0 1px 0 rgba(255,255,255,.45),  /* top specular: catches the light */
+      inset 0 -1px 0 rgba(255,255,255,.08); /* bottom bounce                    */
+    overflow: hidden;
+    isolation: isolate;
+  }
+
+  /* The moving sheen is what separates "liquid glass" from a blurred card.
+     It is one translated gradient — cheap, and it makes the surface feel wet. */
+  .glass::before {
+    content: ""; position: absolute; inset: -40%;
+    background: conic-gradient(from 210deg,
+      transparent 0deg, rgba(255,255,255,.16) 40deg, transparent 90deg,
+      transparent 260deg, rgba(255,255,255,.10) 300deg, transparent 340deg);
+    animation: sheen 9s linear infinite;
+    pointer-events: none; z-index: -1;
+  }
+  @keyframes sheen { to { transform: rotate(360deg); } }
+
+  .glass h2 { font-size: 26px; letter-spacing: -.03em; }
+  .glass p  { margin-top: 10px; line-height: 1.6; opacity: .82; font-size: 15px; }
+  .glass__row { display: flex; gap: 10px; margin-top: 20px; }
+
+  .pill {
+    padding: 11px 18px; border-radius: 999px; font-size: 14px; color: #fff;
+    background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.20);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    transition: transform .35s cubic-bezier(.22,1,.36,1), background .35s ease;
+    cursor: pointer;
+  }
+  .pill:hover { transform: translateY(-2px); background: rgba(255,255,255,.2); }
+  .pill--solid { background: #fff; color: #0a0a0b; border-color: #fff; }
+
+  /* backdrop-filter is unsupported or disabled more often than people assume
+     (older Firefox, some embedded webviews, reduced-transparency users). The
+     fallback has to be a legible opaque card, not an unreadable transparent one. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass, .pill { background: rgba(12,14,18,.86); }
+  }
+  @media (prefers-reduced-motion: reduce) { .glass::before { animation: none; } }
+</style>
+</head>
+<body>
+
+<div class="glass">
+  <h2>Liquid glass</h2>
+  <p>A blurred surface with a top specular edge, a cast shadow and a slow conic sheen. Layer it over motion — never over a flat fill.</p>
+  <div class="glass__row">
+    <button class="pill pill--solid">Start a build</button>
+    <button class="pill">See the system</button>
+  </div>
+</div>
+
+</body>
+</html>

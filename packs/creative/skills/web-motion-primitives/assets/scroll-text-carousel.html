@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Scroll-Driven Text Carousel (pinned)</title>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/ScrollTrigger.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background:#0a0a0b; color:#fff; font-family: ui-sans-serif, system-ui, sans-serif; }
+  .spacer { height: 70svh; display:grid; place-items:center; opacity:.3; text-transform:uppercase; letter-spacing:.2em; font-size:12px; }
+
+  /* Pinned split section: media parks on the left, the copy column advances
+     one item per scroll beat. The value here is pacing — the visitor cannot
+     skim past the three things you actually want read. */
+  .stage { min-height: 100svh; display: grid; grid-template-columns: 1fr 1fr; gap: 6vw;
+           align-items: center; padding: 0 6vw; }
+  .stage__media { aspect-ratio: 4/5; border-radius: 18px; overflow: hidden; background:#111; }
+  .stage__media video, .stage__media img { width:100%; height:100%; object-fit: cover; display:block; }
+
+  .list { position: relative; }
+  .list__item { padding: 22px 0; border-top: 1px solid rgba(255,255,255,.10); opacity: .28;
+                transform: translateY(0); transition: opacity .45s ease; }
+  .list__item.is-active { opacity: 1; }
+  .list__num { font-size: 12px; letter-spacing: .22em; opacity: .5; }
+  .list__title { font-size: clamp(24px, 3.2vw, 46px); letter-spacing: -.035em; margin-top: 8px; }
+  .list__body { margin-top: 10px; max-width: 42ch; line-height: 1.55; opacity: .72;
+                max-height: 0; overflow: hidden; transition: max-height .5s cubic-bezier(.22,1,.36,1); }
+  .list__item.is-active .list__body { max-height: 160px; }
+
+  @media (max-width: 860px) {
+    /* Pinning on touch fights the browser's own scroll physics and feels
+       broken on iOS, so below the breakpoint this degrades to a plain
+       stacked list with everything expanded and legible. */
+    .stage { grid-template-columns: 1fr; padding: 8vh 6vw; }
+    .list__item, .list__item .list__body { opacity: 1; max-height: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="spacer">scroll</div>
+
+<section class="stage" data-carousel>
+  <div class="stage__media">
+    <img alt="" src="https://images.unsplash.com/photo-1519681393784-d120267933ba?w=1200&q=80">
+  </div>
+  <div class="list">
+    <article class="list__item is-active">
+      <div class="list__num">01</div>
+      <h3 class="list__title">Direction first</h3>
+      <p class="list__body">Lock the reference, the palette and the type before a single asset is generated. Everything downstream inherits this decision.</p>
+    </article>
+    <article class="list__item">
+      <div class="list__num">02</div>
+      <h3 class="list__title">Generate in pairs</h3>
+      <p class="list__body">Every hero asset ships as a start frame and an end frame so the motion is authored, not hoped for.</p>
+    </article>
+    <article class="list__item">
+      <div class="list__num">03</div>
+      <h3 class="list__title">Compose, then choreograph</h3>
+      <p class="list__body">Layout is settled in static form. Motion is added last, on top of a page that already works without it.</p>
+    </article>
+    <article class="list__item">
+      <div class="list__num">04</div>
+      <h3 class="list__title">Ship the proof</h3>
+      <p class="list__body">Record it, frame it, publish it. An unseen build converts nobody.</p>
+    </article>
+  </div>
+</section>
+
+<div class="spacer">end</div>
+
+<script>
+gsap.registerPlugin(ScrollTrigger);
+
+document.querySelectorAll('[data-carousel]').forEach((stage) => {
+  const items = gsap.utils.toArray('.list__item', stage);
+  const mm = gsap.matchMedia();
+
+  // matchMedia is the honest way to do this: the desktop timeline is created
+  // only above the breakpoint and GSAP reverts every style it wrote when the
+  // query stops matching, so the mobile fallback is genuinely clean rather
+  // than a pinned layout with the pin disabled.
+  mm.add('(min-width: 861px) and (prefers-reduced-motion: no-preference)', () => {
+    const st = ScrollTrigger.create({
+      trigger: stage,
+      start: 'top top',
+      // One viewport of scroll distance per item is the pacing that reads as
+      // deliberate. Shorter feels twitchy; longer feels like the page hung.
+      end: () => '+=' + (items.length * window.innerHeight * 0.8),
+      pin: true,
+      scrub: true,
+      onUpdate: (self) => {
+        const i = Math.min(items.length - 1, Math.floor(self.progress * items.length));
+        items.forEach((el, n) => el.classList.toggle('is-active', n === i));
+      }
+    });
+    return () => st.kill();
+  });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Parallax Depth Stack — fake 3D from flat layers</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background:#04050a; color:#fff; font-family: ui-sans-serif, system-ui, sans-serif; }
+
+  /* Real perspective, flat assets. Cut one generated image into 3–5 PNG layers
+     (sky / far / mid / subject / foreground) and give each a different Z. The
+     browser then does true perspective division, so pointer and scroll movement
+     produce correct relative motion — which is why this reads as depth where a
+     hand-tuned translate() per layer reads as sliding wallpaper.
+     Cost: a handful of composited layers. Compare that to a WebGL scene. */
+  .depth {
+    position: relative; height: 100svh; overflow: hidden;
+    perspective: 900px; perspective-origin: 50% 50%;
+    background: #04050a;
+  }
+  .depth__world {
+    position: absolute; inset: 0;
+    transform-style: preserve-3d;
+    transition: transform .6s cubic-bezier(.22,1,.36,1);
+  }
+  .depth__layer {
+    position: absolute; inset: -10%;
+    width: 120%; height: 120%;
+    background-size: cover; background-position: center;
+    /* scale compensates for the shrink that translateZ introduces:
+       scale = (perspective - z) / perspective */
+    will-change: transform;
+  }
+  .l-sky   { transform: translateZ(-600px) scale(1.667); filter: saturate(.8) brightness(.6); }
+  .l-far   { transform: translateZ(-300px) scale(1.333); filter: brightness(.75); }
+  .l-mid   { transform: translateZ(-120px) scale(1.133); }
+  .l-near  { transform: translateZ(0px)    scale(1); }
+  .l-fore  { transform: translateZ(180px)  scale(0.8); filter: blur(3px); opacity: .9; }
+
+  .depth__title {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    transform: translateZ(90px);
+    font-size: clamp(44px, 11vw, 170px); font-weight: 500;
+    letter-spacing: -.05em; mix-blend-mode: overlay; pointer-events: none;
+  }
+  @media (prefers-reduced-motion: reduce) { .depth__world { transition: none; } }
+</style>
+</head>
+<body>
+
+<section class="depth" data-depth data-strength="26">
+  <div class="depth__world" data-world>
+    <div class="depth__layer l-sky"  style="background-image:url('https://images.unsplash.com/photo-1419242902214-272b3f66ee7a?w=1600&q=80')"></div>
+    <div class="depth__layer l-far"  style="background-image:url('https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1600&q=80'); mix-blend-mode: screen; opacity:.55"></div>
+    <div class="depth__layer l-mid"  style="background-image:url('https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=1600&q=80'); mix-blend-mode: screen; opacity:.45"></div>
+    <div class="depth__title">DEPTH</div>
+  </div>
+</section>
+
+<script>
+(function () {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  document.querySelectorAll('[data-depth]').forEach((root) => {
+    const world    = root.querySelector('[data-world]');
+    const strength = Number(root.dataset.strength || 24);
+    if (reduce) return;
+
+    // Target vs current with a lerp: raw pointer values make the scene snap
+    // to the cursor, which feels cheap. Easing toward the target gives the
+    // whole stack a small amount of inertia and that is most of the effect.
+    let tx = 0, ty = 0, cx = 0, cy = 0, raf = null, awake = false;
+
+    const frame = () => {
+      cx += (tx - cx) * 0.08;
+      cy += (ty - cy) * 0.08;
+      world.style.transform = `rotateX(${(-cy * strength).toFixed(3)}deg) rotateY(${(cx * strength).toFixed(3)}deg)`;
+      if (Math.abs(tx - cx) > 0.0005 || Math.abs(ty - cy) > 0.0005) raf = requestAnimationFrame(frame);
+      else { raf = null; }
+    };
+    const wake = () => { if (!raf) raf = requestAnimationFrame(frame); };
+
+    root.addEventListener('pointermove', (e) => {
+      const r = root.getBoundingClientRect();
+      tx = (e.clientX - r.left) / r.width  - 0.5;   // -0.5 .. 0.5
+      ty = (e.clientY - r.top)  / r.height - 0.5;
+      world.style.transition = 'none';               // pointer drives it directly
+      wake();
+    });
+
+    root.addEventListener('pointerleave', () => {
+      world.style.transition = '';                   // spring home via CSS
+      tx = ty = 0; wake();
+    });
+
+    // Touch devices have no hover, so drive it from device orientation when the
+    // user has granted it, and otherwise leave the scene at rest — a static
+    // layered composition still looks intentional.
+    if (window.DeviceOrientationEvent && matchMedia('(pointer: coarse)').matches) {
+      window.addEventListener('deviceorientation', (e) => {
+        if (e.gamma == null) return;
+        tx = Math.max(-0.5, Math.min(0.5, e.gamma / 60));
+        ty = Math.max(-0.5, Math.min(0.5, (e.beta - 45) / 60));
+        world.style.transition = 'none';
+        wake();
+      });
+    }
+
+    // Only animate while on screen.
+    new IntersectionObserver(([e]) => {
+      awake = e.isIntersecting;
+      if (!awake && raf) { cancelAnimationFrame(raf); raf = null; }
+    }, { threshold: 0 }).observe(root);
+  });
+})();
+</script>
+</body>
+</html>

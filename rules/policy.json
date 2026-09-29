@@ -1,0 +1,365 @@
+{
+ "version": "0.2-draft",
+ "source": "rules-of-engagement-v0.2.md, section 3, compiled for the team build",
+ "signed": false,
+ "signer": null,
+ "notes": [
+  "Unsigned draft: the accountable human signs the consequential and prohibited sets before they are in force as rules; until then they are the harness defaults.",
+  "Unlisted actions run and are recorded (Varun, 2026-09-26 00:32: the harness never refuses ordinary work). RoE R-INT-01 would make them consequential; that difference is open for sign-off.",
+  "Rules match the program a shell segment actually runs (after environment assignments and wrappers), with `args` read from that segment; heredoc bodies and quoted text are data, not commands. `anywhere` patterns read the whole command with heredoc bodies and quoted text removed.",
+  "Reads are routine: reading a git setting, listing an API's models or balance, or checking a messaging provider's domain status does not change anything. Only the act that changes or sends is classed."
+ ],
+ "protected_branches": [
+  "main",
+  "master",
+  "prod",
+  "production",
+  "staging",
+  "release"
+ ],
+ "phi_path_markers": [
+  "**/phi/**",
+  "**/*.835",
+  "**/*.837",
+  "**/era/**/*.txt",
+  "**/exports/**/*.csv",
+  "**/patients*.csv"
+ ],
+ "synthetic_markers": [
+  "synthetic",
+  "fixture",
+  "fake",
+  "demo"
+ ],
+ "prohibited": [
+  {
+   "id": "P-HOOK-BYPASS",
+   "rule": "R-CLASS-06",
+   "why": "Skipping or disabling a gate, hook or managed setting.",
+   "git_flags": {
+    "commit": [
+     "-n",
+     "--no-verify"
+    ],
+    "push": [
+     "--no-verify"
+    ],
+    "merge": [
+     "--no-verify"
+    ],
+    "rebase": [
+     "--no-verify"
+    ],
+    "am": [
+     "--no-verify"
+    ],
+    "cherry-pick": [
+     "--no-verify"
+    ]
+   },
+   "cmd": [
+    {
+     "prog": "git",
+     "args": "(^|\\s)-c\\s*core\\.hooksPath="
+    },
+    {
+     "prog": "git",
+     "args": "(^|\\s)config\\b.*--(unset|unset-all|replace-all|add)\\s+core\\.hooksPath\\b"
+    },
+    {
+     "prog": "git",
+     "args": "(^|\\s)config\\b(?!.*\\s--(get|get-all|get-regexp|show-origin|list)\\b).*\\bcore\\.hooksPath\\s+(?![0-9]*[<>])[^\\s-]"
+    },
+    {
+     "prog": "claude",
+     "args": "--dangerously-skip-permissions|--bare\\b"
+    },
+    {
+     "prog": ".*",
+     "env": "^HUSKY=0$"
+    },
+    {
+     "prog": ".*",
+     "env": "^GIT_CONFIG_(PARAMETERS|KEY_\\d+|VALUE_\\d+)=.*hooksPath"
+    }
+   ],
+   "write_text": [
+    "\"disableAllHooks\"\\s*:\\s*true",
+    "\\[core\\][^\\[]*\\bhooksPath\\s*="
+   ]
+  },
+  {
+   "id": "P-UNPARSEABLE",
+   "rule": "R-INT-06",
+   "why": "A command the gate cannot read: code fetched or decoded and run in one step.",
+   "cmd": [
+    {
+     "prog": "eval"
+    }
+   ],
+   "anywhere": [
+    "\\|\\s*(sudo\\s+)?(ba|z|da)?sh\\s*($|[;&|)]|-s\\b|-c\\b|-\\s)",
+    "\\b(ba)?sh\\s+<\\(\\s*(curl|wget)",
+    "\\b(ba)?sh\\s+-c\\s+Q?\\$\\((curl|wget)"
+   ]
+  },
+  {
+   "id": "P-AGENT-LAUNCH",
+   "rule": "R-CLASS-06",
+   "why": "Starting another agent or calling a model API from a tool call, outside the harness launcher.",
+   "cmd": [
+    {
+     "prog": "claude",
+     "args": "(^|\\s)(-p|--print)\\b"
+    },
+    {
+     "prog": "codex",
+     "args": "(^|\\s)exec\\b"
+    },
+    {
+     "prog": "gemini",
+     "args": "(^|\\s)(-p|--prompt)\\b"
+    },
+    {
+     "prog": "opencode",
+     "args": "(^|\\s)run\\b"
+    },
+    {
+     "prog": "aider",
+     "args": "--message"
+    },
+    {
+     "prog": "curl|wget|http|https|xh",
+     "args": "api\\.anthropic\\.com/v1/(messages|complete)\\b|api\\.openai\\.com/v1/(chat/completions|completions|responses)\\b|generativelanguage\\.googleapis\\.com/\\S*:(stream)?[gG]enerateContent|openrouter\\.ai/api/v1/(chat/)?completions\\b"
+    }
+   ]
+  },
+  {
+   "id": "P-APPROVAL-STORE",
+   "rule": "R-CLASS-06",
+   "why": "Touching approval records, the approval key or the used-approval list.",
+   "path_text": [
+    "\\.nodaris-harness/(keys|approvals|used)"
+   ],
+   "paths": [
+    "**/.nodaris-harness/keys/**",
+    "**/.nodaris-harness/approvals/**",
+    "**/.nodaris-harness/used/**"
+   ]
+  },
+  {
+   "id": "P-AI-MARK",
+   "rule": "R-CLASS-06",
+   "why": "AI-authorship marks in commits, pull requests or documents.",
+   "publish_text": [
+    "Co-Authored-By:\\s*Claude",
+    "Generated with \\[?Claude Code",
+    "🤖 Generated with"
+   ],
+   "write_text": [
+    "Co-Authored-By:\\s*Claude",
+    "🤖 Generated with \\[?Claude Code"
+   ]
+  },
+  {
+   "id": "P-PROTECTED-PUSH",
+   "rule": "R-CLASS-06",
+   "why": "Pushing to a protected branch.",
+   "protected_push": true
+  }
+ ],
+ "consequential": [
+  {
+   "id": "C-PUSH",
+   "why": "A push leaves this machine.",
+   "git_sub": [
+    "push"
+   ]
+  },
+  {
+   "id": "C-PUBLISH",
+   "why": "Publishing or merging changes that others receive.",
+   "cmd": [
+    {
+     "prog": "npm|pnpm|yarn",
+     "args": "(^|\\s)publish\\b"
+    },
+    {
+     "prog": "twine",
+     "args": "(^|\\s)upload\\b"
+    },
+    {
+     "prog": "gh",
+     "args": "(^|\\s)(pr\\s+(create|merge|edit|close|comment|review)|release\\s+create|repo\\s+(create|delete|edit)|issue\\s+(create|comment|close|edit)|workflow\\s+run)\\b"
+    },
+    {
+     "prog": "gh",
+     "args": "(^|\\s)api\\b.*(-X|--method)\\s*(POST|PUT|PATCH|DELETE)"
+    },
+    {
+     "prog": "gh",
+     "args": "(^|\\s)api\\b.*\\s(-f|-F|--field|--raw-field|--input)\\s"
+    },
+    {
+     "prog": "docker",
+     "args": "(^|\\s)push\\b"
+    }
+   ]
+  },
+  {
+   "id": "C-DEPLOY",
+   "why": "A deploy changes a running system.",
+   "cmd": [
+    {
+     "prog": "gcloud",
+     "args": "\\b(deploy|services\\s+update|instances\\s+(create|delete|stop))\\b"
+    },
+    {
+     "prog": "aws",
+     "args": "\\b(deploy|update-service|update-function-code|create-stack|update-stack|delete-stack|terminate-instances)\\b"
+    },
+    {
+     "prog": "kubectl",
+     "args": "(^|\\s)(apply|delete|rollout|scale|patch|replace|create)\\b"
+    },
+    {
+     "prog": "terraform|tofu",
+     "args": "(^|\\s)(apply|destroy|import)\\b"
+    },
+    {
+     "prog": "helm",
+     "args": "(^|\\s)(install|upgrade|uninstall|rollback)\\b"
+    },
+    {
+     "prog": "pulumi",
+     "args": "(^|\\s)(up|destroy)\\b"
+    },
+    {
+     "prog": "fly|flyctl",
+     "args": "(^|\\s)deploy\\b"
+    },
+    {
+     "prog": "vercel",
+     "args": "--prod\\b"
+    },
+    {
+     "prog": "netlify",
+     "args": "deploy\\b.*--prod\\b"
+    },
+    {
+     "prog": "serverless|sls",
+     "args": "(^|\\s)deploy\\b"
+    },
+    {
+     "prog": "heroku",
+     "args": "(releases|ps:scale|config:set)"
+    }
+   ]
+  },
+  {
+   "id": "C-REMOTE",
+   "why": "Running commands or copying files on another machine.",
+   "cmd": [
+    {
+     "prog": "ssh|mosh|sftp"
+    },
+    {
+     "prog": "scp"
+    },
+    {
+     "prog": "rsync",
+     "args": "(^|\\s)[A-Za-z0-9_.@-]+:"
+    },
+    {
+     "prog": "gcloud",
+     "args": "(^|\\s)compute\\s+(ssh|scp)\\b"
+    },
+    {
+     "prog": "aws",
+     "args": "(^|\\s)ssm\\s+(start-session|send-command)\\b"
+    },
+    {
+     "prog": "kubectl",
+     "args": "(^|\\s)(exec|cp)\\b"
+    }
+   ]
+  },
+  {
+   "id": "C-SEND",
+   "why": "Sending a message or data to a person or a system outside this machine.",
+   "cmd": [
+    {
+     "prog": "sendmail|mail|mailx|mutt"
+    },
+    {
+     "prog": "curl|wget|http|https|xh",
+     "args": "hooks\\.slack\\.com|api\\.telegram\\.org/bot"
+    },
+    {
+     "prog": "curl",
+     "args": "(-X\\s*(POST|PUT|PATCH|DELETE)|--data\\S*|-d\\s|-F\\s|--form|-T\\s|--upload-file)",
+     "needs_args": "https?://(?!localhost|127\\.0\\.0\\.1|0\\.0\\.0\\.0|\\[::1\\])"
+    }
+   ]
+  },
+  {
+   "id": "C-DB-DESTRUCTIVE",
+   "why": "A destructive change, or any statement against a database on another machine.",
+   "cmd": [
+    {
+     "prog": "psql|mysql|mongo|mongosh|redis-cli",
+     "args": "(-h|--host)[= ]?\\s*(?!localhost\\b|127\\.0\\.0\\.1\\b)[A-Za-z0-9]"
+    },
+    {
+     "prog": "psql|mysql|sqlite3|mongosh|docker",
+     "args": "(?i)(DROP\\s+(DATABASE|SCHEMA|TABLE)|TRUNCATE\\s+(TABLE\\s+)?\\w)"
+    }
+   ]
+  },
+  {
+   "id": "C-MACHINE-CHANGE",
+   "why": "Installing or changing software or scheduled jobs outside the project.",
+   "cmd": [
+    {
+     "prog": "brew",
+     "args": "(^|\\s)(install|uninstall|upgrade|tap)\\b"
+    },
+    {
+     "prog": "npm|pnpm",
+     "args": "(^|\\s)(i|install|add)\\s.*(-g|--global)\\b"
+    },
+    {
+     "prog": "pipx",
+     "args": "(^|\\s)install\\b"
+    },
+    {
+     "prog": "sudo"
+    },
+    {
+     "prog": "crontab",
+     "args": "(^|\\s)(-e|-r|[^-\\s]\\S*)"
+    },
+    {
+     "prog": "launchctl",
+     "args": "(^|\\s)(load|bootstrap|enable)\\b"
+    },
+    {
+     "prog": "systemctl",
+     "args": "(^|\\s)(enable|start|restart)\\b"
+    }
+   ]
+  },
+  {
+   "id": "C-PAID-MODEL",
+   "why": "Spending money on a paid model or lane.",
+   "anywhere": [
+    "--allow-paid\\b"
+   ]
+  },
+  {
+   "id": "C-PHI-SOURCE",
+   "why": "Reading a PHI-marked source; the output reaches a model only through redaction.",
+   "phi_read": true
+  }
+ ]
+}

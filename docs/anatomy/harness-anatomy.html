@@ -1,0 +1,2172 @@
+<meta charset="utf-8">
+<title>Nodaris Harness Anatomy</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  color-scheme:dark;
+  --ground:#0b0f17;--ground-2:#0d1320;--panel:#0f1724;--panel-2:#131d2e;
+  --line:#1c283b;--line-2:#29384f;
+  --ink:#e6edf7;--ink-2:#c8d4e4;--muted:#93a3b8;--faint:#64748b;
+  --accent:#79a8ff;--accent-2:#9cc0ff;--accent-strong:#2563eb;
+  --c-engine:#8b9bb4;--c-guards:#f0b429;--c-memory:#3dd6c0;--c-method:#a78bfa;--c-reach:#6ea8fe;--c-pipeline:#f472b6;--c-block:#ff6b6b;
+  --font:'Geist',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:'Geist Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  --gut:max(16px,3vw);
+}
+*{box-sizing:border-box}
+html{background:var(--ground);-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font:400 16px/1.55 var(--font);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+.wrap{max-width:1280px;margin:0 auto;padding:0 var(--gut)}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* hero */
+.hero{padding-top:clamp(40px,7vw,84px);padding-bottom:26px}
+.meta{margin:0 0 20px;display:flex;flex-wrap:wrap;gap:6px 0;font:500 12.5px/1.4 var(--mono);color:var(--muted);letter-spacing:.01em}
+.meta span:not(:last-child)::after{content:'·';margin:0 10px;color:var(--faint)}
+h1{margin:0 0 22px;font-weight:800;font-size:clamp(44px,8.2vw,108px);line-height:.92;letter-spacing:-.045em}
+h1 .a{color:var(--accent)}
+.lede{max-width:780px;margin:0 0 26px;color:var(--ink-2);font-size:clamp(16px,1.55vw,18.5px);line-height:1.6}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{appearance:none;display:inline-flex;align-items:center;gap:8px;padding:8px 13px 8px 11px;border-radius:999px;border:1px solid var(--line-2);background:var(--panel);color:var(--ink-2);font:500 13.5px/1 var(--font);cursor:pointer;transition:border-color .2s,background-color .2s,opacity .2s}
+.chip i{width:9px;height:9px;border-radius:50%;background:var(--c);box-shadow:0 0 10px var(--c)}
+.chip b{font:500 12px/1 var(--mono);color:var(--muted)}
+.chip:hover{border-color:var(--c)}
+.chip[aria-pressed="true"]{border-color:var(--c);background:color-mix(in srgb,var(--c) 16%,var(--panel));color:var(--ink)}
+.chips.has-focus .chip[aria-pressed="false"]{opacity:.55}
+
+/* stage */
+.stage{--vp:clamp(500px,78vh,840px);position:relative;border:1px solid var(--line);border-radius:20px;overflow:hidden;background:radial-gradient(80% 60% at 66% 10%,#13223d 0%,rgba(13,19,32,0) 62%),radial-gradient(60% 55% at 24% 42%,#101a2d 0%,rgba(13,19,32,0) 66%),var(--ground-2)}
+.viewport{position:relative;height:var(--vp)}
+.viewport.failed{height:auto;min-height:220px}
+#gl,#lines{position:absolute;inset:0;width:100%;height:100%;display:block}
+#gl{touch-action:pan-y;cursor:grab}
+#gl.drag{cursor:grabbing}
+#gl.point{cursor:pointer}
+#lines{pointer-events:none}
+.labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.lbl{position:absolute;left:0;top:0;display:flex;align-items:center;gap:6px;white-space:nowrap;visibility:hidden;opacity:0;will-change:transform,opacity}
+.lbl.node{font:500 12px/1 var(--font);color:var(--ink-2);padding:4px 9px 4px 8px;border-radius:999px;background:rgba(11,16,26,.84);border:1px solid rgba(41,56,79,.9)}
+.lbl.node i{width:6px;height:6px;border-radius:50%;background:var(--c);flex:none}
+.lbl.node.click{pointer-events:auto;cursor:pointer}
+.lbl.node.hot{color:var(--ink);border-color:var(--c);background:rgba(19,29,46,.97)}
+.lbl.node.sat{font:500 11.5px/1 var(--mono)}
+.lbl.stg{font:500 12.5px/1 var(--font);color:var(--muted);gap:10px}
+.lbl.stg b{font:500 11.5px/1 var(--mono);color:var(--faint)}
+.lbl.stg.on{color:var(--ink)}
+.lbl.stg.on b{color:var(--accent)}
+.lbl.stg.short span{display:none}
+.lbl.title{flex-direction:column;gap:6px;text-align:center;font:700 clamp(15px,1.5vw,19px)/1.1 var(--font);letter-spacing:-.01em;color:var(--ink)}
+.lbl.title small{font:500 11.5px/1 var(--mono);color:var(--muted);letter-spacing:.02em}
+.lbl.title.ours{color:var(--accent-2)}
+.lbl.tag{font:500 11px/1 var(--mono);color:var(--c);padding:3px 7px;border-radius:999px;border:1px solid color-mix(in srgb,var(--c) 45%,transparent);background:rgba(11,16,26,.7)}
+.lbl.callout{display:block;white-space:normal;width:238px;padding:10px 12px;border-radius:12px;border:1px solid var(--c);background:rgba(16,23,36,.96);box-shadow:0 12px 40px rgba(0,0,0,.45);font:400 13px/1.45 var(--font);color:var(--ink-2)}
+.lbl.callout strong{display:block;margin-bottom:4px;font:600 11.5px/1.2 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--c)}
+
+/* toolbar */
+.bar{position:absolute;top:14px;left:14px;right:14px;z-index:4;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;pointer-events:none}
+.bar>*{pointer-events:auto}
+.bar-r{display:flex;gap:8px;flex-wrap:wrap}
+.seg{display:inline-flex;gap:2px;padding:3px;border-radius:999px;border:1px solid var(--line-2);background:rgba(12,18,30,.88);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.seg button{appearance:none;border:0;background:none;color:var(--muted);font:500 13px/1 var(--font);padding:8px 12px;border-radius:999px;cursor:pointer;white-space:nowrap}
+.seg button:hover{color:var(--ink)}
+.seg button[aria-pressed="true"]{background:var(--panel-2);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line-2)}
+.seg.zoom button{padding:7px 11px;font-size:15px;line-height:1}
+.pill{appearance:none;border:1px solid var(--line-2);background:rgba(12,18,30,.88);color:var(--ink-2);font:500 13px/1 var(--font);padding:9px 13px;border-radius:999px;cursor:pointer;white-space:nowrap}
+.pill:hover{border-color:var(--accent);color:var(--ink)}
+.pill.primary{background:var(--accent-strong);border-color:var(--accent-strong);color:#fff}
+.pill.primary:hover{background:#2f6df0}
+.pill:disabled{opacity:.4;cursor:default}
+.sm{display:none}
+@media (max-width:640px){.lg{display:none}.sm{display:inline}}
+.hint{position:absolute;left:16px;bottom:12px;margin:0;font:500 11.5px/1.3 var(--mono);color:var(--faint);pointer-events:none;z-index:2}
+.fallback{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;color:var(--ink-2)}
+.fallback[hidden]{display:none}
+.fallback p{margin:6px 0 0;color:var(--muted)}
+
+/* details card */
+.card{position:absolute;right:14px;top:64px;width:min(350px,calc(100% - 28px));max-height:calc(var(--vp) - 84px);overflow:auto;z-index:5;background:rgba(14,21,34,.97);border:1px solid var(--line-2);border-radius:14px;padding:14px 16px 16px;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+.card[hidden]{display:none}
+.card-top{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.ctag{font:500 11.5px/1 var(--mono);color:var(--c);border:1px solid color-mix(in srgb,var(--c) 50%,transparent);padding:5px 8px;border-radius:999px}
+.where{font:500 11.5px/1.3 var(--mono);color:var(--muted)}
+.where.w-pack{color:var(--accent-2)}
+.where.w-machine{color:#d7b46a}
+.where.w-team{color:#7ee2a8}
+.x{margin-left:auto;appearance:none;border:1px solid var(--line-2);background:none;color:var(--ink-2);width:28px;height:28px;border-radius:8px;font-size:17px;line-height:1;cursor:pointer}
+.x:hover{border-color:var(--accent)}
+.card h3{margin:0 0 4px;font-size:20px;font-weight:700;letter-spacing:-.01em}
+.when{margin:0 0 4px;font:500 12px/1.3 var(--mono);color:var(--faint)}
+.card dl{margin:0}
+.card dt{font:500 11px/1 var(--mono);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:14px 0 5px}
+.card dd{margin:0;color:var(--ink-2);font-size:14.5px;line-height:1.5}
+@media (max-width:859px){.card{position:relative;right:auto;top:auto;width:auto;max-height:none;margin:12px;box-shadow:none}}
+
+/* console under the picture */
+.console{border-top:1px solid var(--line);background:linear-gradient(180deg,rgba(13,20,34,.96),rgba(11,15,23,.98));padding:16px 20px 18px}
+.console[hidden]{display:none}
+.con-top{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+.kicker{margin:0 0 6px;font:500 11.5px/1 var(--mono);color:var(--accent);letter-spacing:.06em;text-transform:uppercase}
+.con-top h2{font-size:clamp(17px,2vw,22px);font-weight:700;letter-spacing:-.01em;margin:0;line-height:1.25}
+.con-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.col{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:rgba(16,24,38,.6)}
+.col.ours{border-color:rgba(121,168,255,.35)}
+.col-h{margin:0 0 6px;font:500 11.5px/1 var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.col.ours .col-h{color:var(--accent-2)}
+.col p:last-child{margin:0;color:var(--ink-2);font-size:14.5px}
+@media (max-width:700px){.cols{grid-template-columns:1fr}}
+.dots{display:flex;gap:4px;padding:0 4px}
+.dots button{width:22px;height:22px;border:0;padding:0;background:none;cursor:pointer;display:grid;place-items:center}
+.dots button::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--line-2)}
+.dots button[aria-current="step"]::before{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+
+/* reading guide */
+.defs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;padding-top:18px}
+.defs div{border-top:1px solid var(--line);padding-top:12px}
+.defs b{display:block;font:600 13.5px/1.2 var(--font);color:var(--ink);margin-bottom:4px}
+.defs span{font-size:13.5px;color:var(--muted);line-height:1.5}
+@media (max-width:900px){.defs{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:520px){.defs{grid-template-columns:1fr}}
+
+/* sections */
+.sec{padding-top:clamp(56px,8vw,96px)}
+.sec-h{max-width:800px;margin-bottom:24px}
+.sec-h .meta{margin-bottom:12px}
+.sec-h h2{margin:0 0 12px;font-weight:800;font-size:clamp(28px,3.6vw,44px);line-height:1.04;letter-spacing:-.03em}
+.sec-h p{margin:0 0 10px;color:var(--ink-2);font-size:16.5px}
+
+/* parts table */
+.matrix{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--panel)}
+.m-head,.m-row{display:grid;grid-template-columns:minmax(150px,1fr) minmax(0,2.5fr) 120px 150px;gap:16px;align-items:center;padding:10px 18px}
+.m-head{font:500 11.5px/1 var(--mono);color:var(--faint);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--line);background:var(--panel-2);padding-top:12px;padding-bottom:12px}
+.m-gh{display:grid;grid-template-columns:auto auto 1fr;align-items:baseline;gap:4px 10px;padding:20px 18px 8px;border-top:1px solid var(--line)}
+.m-group:first-of-type .m-gh{border-top:0}
+.m-gh i{width:10px;height:10px;border-radius:50%;background:var(--c);box-shadow:0 0 12px var(--c);align-self:center}
+.m-gh h3{margin:0;font-size:17px;font-weight:600}
+.m-gh span{font:500 12px/1 var(--mono);color:var(--muted)}
+.m-gh p{grid-column:1/-1;margin:2px 0 0;color:var(--muted);font-size:14px}
+.m-row{width:100%;appearance:none;border:0;border-top:1px solid rgba(28,40,59,.7);background:none;color:inherit;text-align:left;font:inherit;cursor:pointer}
+.m-row:hover{background:rgba(121,168,255,.05)}
+.m-name{font-weight:600;font-size:14.5px;color:var(--ink)}
+.m-what{font-size:14px;color:var(--ink-2)}
+.m-plain em,.m-ours em{display:inline-block;font:500 12px/1 var(--mono);font-style:normal;padding:5px 8px;border-radius:999px;border:1px solid var(--line-2);color:var(--muted);white-space:nowrap}
+em.yes{color:var(--ink-2)}
+em.no{color:var(--faint);border-style:dashed}
+em.w-pack{color:var(--accent-2);border-color:rgba(121,168,255,.45)}
+em.w-machine{color:#d7b46a;border-color:rgba(240,180,41,.35)}
+em.w-team{color:#7ee2a8;border-color:rgba(126,226,168,.4)}
+@media (max-width:760px){
+  .m-head{display:none}
+  .m-row{grid-template-columns:1fr 1fr;gap:8px 12px;padding:12px 18px}
+  .m-name,.m-what{grid-column:1/-1}
+  .m-plain::before,.m-ours::before{display:block;margin-bottom:5px;font:500 10.5px/1 var(--mono);color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+  .m-plain::before{content:'Plain'}
+  .m-ours::before{content:'Harness'}
+}
+
+/* buys and costs */
+.two{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.bc{border:1px solid var(--line);border-radius:16px;background:var(--panel);padding:22px 22px 8px}
+.bc h3{margin:0 0 6px;font-size:13px;font-family:var(--mono);font-weight:500;text-transform:uppercase;letter-spacing:.07em;color:var(--c)}
+.bc ol{list-style:none;margin:0;padding:0;counter-reset:n}
+.bc li{padding:13px 0 15px 40px;position:relative;border-top:1px solid var(--line)}
+.bc li:first-child{border-top:0}
+.bc li::before{counter-increment:n;content:counter(n,decimal-leading-zero);position:absolute;left:0;top:15px;font:500 12px/1 var(--mono);color:var(--c)}
+.bc li b{display:block;font-weight:600;color:var(--ink);margin-bottom:3px}
+.bc li span{color:var(--ink-2);font-size:14.5px}
+@media (max-width:860px){.two{grid-template-columns:1fr}}
+
+/* benchmark */
+.bars{display:grid;gap:18px;border:1px solid var(--line);border-radius:16px;background:var(--panel);padding:22px}
+.br{display:grid;grid-template-columns:220px 1fr;gap:6px 20px;align-items:center}
+.br-l b{display:block;font-weight:600}
+.br-l span{font:500 12px/1.35 var(--mono);color:var(--muted)}
+.br-b{display:grid;gap:7px}
+.bar-row{display:grid;grid-template-columns:66px 1fr 76px;align-items:center;gap:10px;font:500 12px/1 var(--mono);color:var(--muted)}
+.bar-row .num{text-align:right;color:var(--ink-2)}
+.track{height:10px;border-radius:999px;background:#0b1220;border:1px solid var(--line);overflow:hidden}
+.fill{height:100%;border-radius:999px;width:0;transition:width 1.2s cubic-bezier(.2,.7,.2,1)}
+.fill.on{width:var(--w)}
+.fill.ours{background:linear-gradient(90deg,#2563eb,#79a8ff)}
+.fill.plain{background:linear-gradient(90deg,#46505f,#8b9bb4)}
+.br.total{border-top:1px solid var(--line);padding-top:18px}
+@media (max-width:640px){.br{grid-template-columns:1fr}}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:14px}
+.stat{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:14px 16px}
+.stat .k{font:500 11.5px/1.25 var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:0 0 10px}
+.stat .vs{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat .vs span{display:block;font:500 11px/1 var(--mono);color:var(--faint);margin-bottom:6px}
+.stat .vs b{font-weight:600;font-size:15px;line-height:1.3}
+.stat .vs .o b{color:var(--accent-2)}
+.stat .n{margin:10px 0 0;font-size:13px;color:var(--muted);line-height:1.45}
+.note{margin-top:14px;color:var(--muted);font-size:14.5px;max-width:860px}
+
+footer{padding-top:64px;padding-bottom:56px;color:var(--faint);font-size:13.5px;line-height:1.6}
+footer p{max-width:860px;margin:0 0 8px}
+@media (prefers-reduced-motion:reduce){.fill{transition:none}.chip{transition:none}}
+
+/* pipeline section */
+.flow{list-style:none;margin:22px 0 26px;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;counter-reset:f}
+.flow li{position:relative;border:1px solid var(--line);border-top:2px solid var(--c);border-radius:14px;background:var(--panel);padding:16px 16px 16px 16px}
+.flow li::before{counter-increment:f;content:counter(f,decimal-leading-zero);display:block;font:500 12px/1 var(--mono);color:var(--c);margin-bottom:8px}
+.flow li b{display:block;font-weight:600;margin-bottom:4px}
+.flow li span{color:var(--ink-2);font-size:14.5px}
+.pl-two{margin-bottom:10px}
+.pl-sub{margin-top:34px}
+.pl-sub h3{margin:0 0 8px;font-size:clamp(20px,2.2vw,26px);font-weight:700;letter-spacing:-.02em}
+.sec-h code,.code pre{font-family:var(--mono)}
+.sec-h code{font-size:.92em;color:var(--accent-2)}
+.code{margin:0;border:1px solid var(--line);border-radius:14px;background:var(--panel);overflow:hidden;min-width:0}
+.code figcaption{font:500 11.5px/1 var(--mono);color:var(--faint);text-transform:uppercase;letter-spacing:.06em;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel-2)}
+.code pre{margin:0;padding:14px 16px;font-size:12.5px;line-height:1.6;color:var(--ink-2);white-space:pre-wrap;word-break:break-all;max-height:420px;overflow:auto}
+.receipt{margin-top:4px}
+.cmp-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
+.cmp{width:100%;min-width:720px;border-collapse:collapse;font-size:14px}
+.cmp th{font:500 11.5px/1.2 var(--mono);color:var(--faint);text-transform:uppercase;letter-spacing:.06em;text-align:left;padding:12px 14px;background:var(--panel-2);border-bottom:1px solid var(--line)}
+.cmp td{padding:11px 14px;border-top:1px solid rgba(28,40,59,.7);color:var(--ink-2);vertical-align:top}
+.cmp td:first-child{color:var(--ink);font-weight:600;white-space:nowrap}
+.cmp td:last-child{color:var(--ink)}
+@media (max-width:760px){.pl-two{grid-template-columns:1fr}}
+</style>
+
+<header class="wrap hero">
+  <p class="meta"><span>claude code</span><span>same model underneath</span><span>plain vs nodaris harness</span><span>15 blind-judged task pairs</span></p>
+  <h1>same engine.<br><span class="a">different harness.</span></h1>
+  <p class="lede">Both sides run the same Claude model inside the same program. On the left is Claude Code as it ships. On the right is Claude Code with our harness installed: guards that stop risky actions before they run, a memory that learns from mistakes, and rules for how work is done and when it counts as finished. Drag the picture to turn it, and click any dot or name to see what that part does, what it buys and what it costs.</p>
+  <div class="chips" id="chips" role="group" aria-label="Highlight one kind of part"></div>
+</header>
+
+<section class="wrap" aria-label="Interactive comparison">
+  <div class="stage" id="stage">
+    <div class="viewport" id="viewport">
+      <canvas id="gl" aria-label="Interactive 3D git graph of plain Claude Code and the harness. Everything it shows is also listed in the table below the picture."></canvas>
+      <canvas id="lines" aria-hidden="true"></canvas>
+      <div class="labels" id="labels" aria-hidden="true"></div>
+      <div class="bar">
+        <div class="seg" id="modes" role="group" aria-label="What to show">
+          <button type="button" data-mode="overview" aria-pressed="true">Overview</button>
+          <button type="button" data-mode="walk" aria-pressed="false"><span class="lg">Walk through a task</span><span class="sm">Walk through</span></button>
+          <button type="button" data-mode="secret" aria-pressed="false"><span class="lg">Replay the secret test</span><span class="sm">Secret test</span></button>
+        </div>
+        <div class="bar-r">
+          <div class="seg" id="views" role="group" aria-label="Which side to frame">
+            <button type="button" data-view="both" aria-pressed="true">Both</button>
+            <button type="button" data-view="plain" aria-pressed="false">Plain</button>
+            <button type="button" data-view="ours" aria-pressed="false">Harness</button>
+          </div>
+          <div class="seg zoom" role="group" aria-label="Zoom">
+            <button type="button" id="zout" aria-label="Zoom out">−</button>
+            <button type="button" id="zin" aria-label="Zoom in">+</button>
+          </div>
+          <button type="button" class="pill" id="pause" aria-pressed="false">Pause motion</button>
+        </div>
+      </div>
+      <p class="hint" id="hint">Drag to turn · click a dot or a name</p>
+      <div class="fallback" id="fallback" hidden>
+        <div><b>This browser has 3D graphics turned off, so the picture cannot be drawn.</b><p>Everything it shows is listed in the table below.</p></div>
+      </div>
+    </div>
+    <aside class="card" id="card" hidden aria-live="polite"></aside>
+    <div class="console" id="console" aria-live="polite">
+      <div class="con-top">
+        <div><p class="kicker" id="kicker">Overview</p><h2 id="conTitle">One task flows from top to bottom on both sides.</h2></div>
+        <div class="con-nav" id="conNav"></div>
+      </div>
+      <div class="cols">
+        <div class="col"><p class="col-h">Plain Claude Code</p><p id="colPlain"></p></div>
+        <div class="col ours"><p class="col-h">With the harness</p><p id="colOurs"></p></div>
+      </div>
+    </div>
+  </div>
+  <div class="defs" aria-label="How to read the picture">
+    <div><b>Trunk</b><span>One task, from the moment the session starts to the moment its conversation is compacted.</span></div>
+    <div><b>Branch</b><span>A part that joins in at that moment and hands the work back. The color says what kind of part it is.</span></div>
+    <div><b>Hook</b><span>A small script Claude Code runs automatically at a fixed moment, such as before every tool call. It runs whatever the model thinks.</span></div>
+    <div><b>Skill</b><span>A playbook Claude loads only when the task calls for it.</span></div>
+    <div><b>Rule</b><span>Text Claude reads at the start of every session, like a standing brief.</span></div>
+  </div>
+</section>
+
+
+<section class="wrap sec" id="pipeline">
+  <div class="sec-h">
+    <p class="meta"><span>the pipeline</span><span>in the team build</span><span>enforced by hooks</span></p>
+    <h2>How one sentence becomes production work</h2>
+    <p>A teammate or a practice owner types what they want. They do not name the file, the test command, the threat or the standard. Plain Claude Code works from the sentence as typed. The harness runs every change through the same stages a senior healthcare engineer would, and the stages that matter most are enforced by code, so the model cannot skip them.</p>
+  </div>
+  <ol class="flow">
+    <li style="--c:var(--c-pipeline)"><b>Understand</b><span>The intake hook reads the repository: its stack, its test, lint and type commands, and where the tests live. A request that names no file becomes a written brief with acceptance checks before anything is edited.</span></li>
+    <li style="--c:var(--c-pipeline)"><b>Classify</b><span>A request about patients, practices, sign-in, money, uploads or models gets the eight-point security checklist in the model’s context. So does the first edit to a sensitive file, even when the request never said so.</span></li>
+    <li style="--c:var(--c-pipeline)"><b>Build on foundations</b><span>A new application starts from the blueprint: practice separation, sign-in with MFA, an audit trail, encrypted identifiers, safe logging, bounded input and a verify script, each with its own test.</span></li>
+    <li style="--c:var(--c-pipeline)"><b>Lint while writing</b><span>Every write is checked for patient fields in log lines and realistic identifiers in test data, and the model is told the line to fix.</span></li>
+    <li style="--c:var(--c-pipeline)"><b>Attack</b><span>The model attacks its own change under written rules of engagement, and every attack becomes a test that fails on the unsafe version.</span></li>
+    <li style="--c:var(--c-pipeline)"><b>Scan and review</b><span>Secret, pattern and dependency scanners run on what changed, and a read-only reviewer agent reads the diff against seven categories.</span></li>
+    <li style="--c:var(--c-block)"><b>Gate</b><span>The turn cannot end until a check passed after the last change and, for sensitive work, until attack tests ran, the scan was clean and a threat model note exists.</span></li>
+    <li style="--c:var(--c-memory)"><b>Prove</b><span>The trust receipt lists what was proven from recorded events, not from the model’s summary.</span></li>
+  </ol>
+
+  <div class="two pl-two">
+    <div class="bc" style="--c:var(--c-pipeline)">
+      <h3>Self-attack: rules of engagement</h3>
+      <ol>
+        <li><b>This machine only.</b><span>Attacks run against the local code and tests, on local addresses. Nothing is sent to a shared or production system.</span></li>
+        <li><b>Synthetic data only.</b><span>Test people have names nobody could mistake for a patient, reserved phone ranges and never-issued identifiers.</span></li>
+        <li><b>Nothing destructive.</b><span>No deletes outside the test database, no load tests, no scans of other hosts. The destructive-command guard enforces this whatever the model decides.</span></li>
+        <li><b>Every finding is closed.</b><span>A finding is fixed, or pinned by a test and named for the owner. None is left as a note.</span></li>
+        <li><b>The attacks tried.</b><span>Another practice’s data, missing or bypassed sign-in, identity fields forged in the request, mass assignment, SQL, X12 and spreadsheet-formula injection, prompt injection into model features, oversized and malformed input, patient data in errors and logs, replay, and money that does not add up.</span></li>
+      </ol>
+    </div>
+    <div class="bc" style="--c:var(--c-guards)">
+      <h3>The eight-point security checklist</h3>
+      <ol>
+        <li><b>Threat model first.</b><span>Changed endpoints, every kind of caller, the trust boundary and at least three abuse cases, each mapped to its test.</span></li>
+        <li><b>Identity from the signed-in user.</b><span>Practice, user and actor ids sent in a request are derived from the principal or rejected.</span></li>
+        <li><b>Every layer enforces.</b><span>The view, the service, the query and the policy engine, not only the nearest one.</span></li>
+        <li><b>Refusals are audited.</b><span>A denied attempt is recorded against the caller’s real practice, with no patient data in the record.</span></li>
+        <li><b>Uniform errors.</b><span>A refusal never reveals whether the other practice or record exists.</span></li>
+        <li><b>Service callers still work.</b><span>Background jobs and service accounts on the same path are tested too.</span></li>
+        <li><b>Bounded and fail-closed.</b><span>Sizes, counts and lengths are limited; errors are typed; nothing is silently repaired.</span></li>
+        <li><b>Attack, scan, review.</b><span>Then fix what they find.</span></li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="sec-h pl-sub"><h3>Redaction, on a synthetic error log and remittance</h3>
+    <p>Before a log, an error or an X12 file leaves the machine, <code>tools/redact.py</code> replaces each identifier with a pseudonym. One value keeps one pseudonym everywhere it appears, so the member id in the log line and in the remittance still match, and the amounts and adjustment codes stay readable. When the tool cannot vouch for the result, it writes nothing.</p></div>
+  <div class="two pl-two">
+    <figure class="code"><figcaption>Before</figcaption><pre>2026-09-26 12:04:11 ERROR claim rejected for patient Alex Testpatient, DOB 03/14/1961, member ID: MBR99887766, phone 415-555-0172
+ISA*00*          *00*          *ZZ*SENDERID       *ZZ*RECEIVERID     *260926*1200*^*00501*000000101*0*T*:~
+GS*HP*SENDER*RECEIVER*20260926*1200*101*X*005010X221A1~
+ST*835*0001~
+BPR*I*150.00*C*ACH~
+TRN*1*CHK00012345*1512345678~
+CLP*CLM-889201*1*200.00*150.00**12*ICN77410022~
+NM1*QC*1*TESTPATIENT*ALEX****MI*MBR99887766~
+CAS*CO*45*50.00~
+SE*7*0001~
+GE*1*101~
+IEA*1*000000101~
+</pre></figure>
+    <figure class="code"><figcaption>After</figcaption><pre>[DATE_5c55297a] 12:04:11 ERROR claim rejected for patient [PATIENT_NAME_cf62328f], DOB [DATE_7372ed9f], member ID: [MEMBER_ID_ffa056ec], phone [PHONE_762d134d]
+ISA*00*          *00*          *ZZ*SENDERID       *ZZ*RECEIVERID     *260926*1200*^*00501*000000101*0*T*:~
+GS*HP*SENDER*RECEIVER*20260926*1200*101*X*005010X221A1~
+ST*835*0001~
+BPR*I*150.00*C*ACH~
+TRN*1*[CLAIM_ID_3199609a]*1512345678~
+CLP*[CLAIM_ID_455cf212]*1*200.00*150.00**12*[CLAIM_ID_31771e53]~
+NM1*QC*1*[PATIENT_NAME_efdc0d4e]*[PATIENT_NAME_e3df51bb]****MI*[MEMBER_ID_ffa056ec]~
+CAS*CO*45*50.00~
+SE*7*0001~
+GE*1*101~
+IEA*1*000000101~
+</pre></figure>
+  </div>
+
+  <div class="sec-h pl-sub"><h3>A trust receipt, from a headless test run</h3>
+    <p>The request was one sentence: clinics can see each other’s patient records if they change the clinic in the request. The receipt below is an excerpt of what the harness recorded. The done gate stopped the model once, because it had not written attack tests yet. The reviewer agent then found two more fail-open paths, and both were fixed before the summary.</p></div>
+  <figure class="code receipt"><figcaption>tools/trust_report.py (excerpt)</figcaption><pre>Verdict
+- Proven: checks passed after the last code change.
+- Proven: adversarial tests were written for the security-sensitive change and ran.
+- Proven: the security scan of the changed files was clean after the last sensitive change.
+- Done: a threat model note for the change (patient-records-threat-model.md).
+- Done: an independent security review of the change (1 run).
+
+Code changed
+- app/records.py  (security-sensitive)
+- tests/test_records.py  (adversarial tests)
+
+Times the done gate stopped the model
+- security-sensitive code changed without adversarial tests that ran</pre></figure>
+
+  <div class="sec-h pl-sub"><h3>Against the frontier harnesses</h3>
+    <p>What each kind of tool does at each stage, by default. The harness runs on Claude Code, so everything Claude Code does is still there.</p></div>
+  <div class="cmp-wrap"><table class="cmp">
+    <thead><tr><th>Stage</th><th>Plain Claude Code</th><th>Best practice elsewhere</th><th>With the harness</th></tr></thead>
+    <tbody>
+      <tr><td>Intake</td><td>The prompt as typed</td><td>Kiro turns a prompt into requirements</td><td>Repository card, vague and sensitive requests detected, security checklist attached</td></tr>
+      <tr><td>Spec</td><td>Plan mode, if asked</td><td>Kiro requirements, design and tasks</td><td>A brief before any edit; an EARS spec file for big work</td></tr>
+      <tr><td>Context</td><td>CLAUDE.md and search</td><td>Aider repository map; OpenHands path triggers</td><td>Repository card; checklist on the first sensitive edit</td></tr>
+      <tr><td>Build</td><td>The model’s own habits</td><td>Lint on edit (Aider), editor diagnostics</td><td>PHI lint on every write; tests first; the app blueprint</td></tr>
+      <tr><td>Secure</td><td>Permission prompts</td><td>Codex sandbox; scanners in CI</td><td>Guards and deny rules; self-attack tests; a scan of every change</td></tr>
+      <tr><td>Review</td><td>If asked</td><td>Codex review; Amp’s oracle</td><td>A read-only security reviewer on every sensitive change</td></tr>
+      <tr><td>Done</td><td>The model decides</td><td>Tests run if the agent chooses</td><td>A gate that blocks until the evidence exists</td></tr>
+      <tr><td>Evidence</td><td>The model’s summary</td><td>A pull request description</td><td>A trust receipt built from recorded events</td></tr>
+      <tr><td>Healthcare</td><td>General knowledge</td><td>None of these tools is domain-specific</td><td>HIPAA safeguards as code rules, Safe Harbor identifiers, X12 traps, redaction</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="sec-h pl-sub"><h3>Installing it on a teammate’s machine</h3>
+    <p>The team build is a separate Claude Code configuration folder. It carries the pipeline, the secret and destructive-command guards, 75 deny rules, nine skills and the rules file, and nothing from the machine it was built on. It runs beside a normal Claude Code setup without changing it.</p></div>
+  <figure class="code"><figcaption>Terminal</figcaption><pre>python3 team.py build ~/.healthcare-harness
+~/.healthcare-harness/launch.sh</pre></figure>
+</section>
+<section class="wrap sec" id="parts">
+  <div class="sec-h">
+    <p class="meta"><span>44 parts against 7</span><span>click a row to find it in the picture</span></p>
+    <h2>What each side carries</h2>
+    <p>Every part in the picture, grouped by kind. “In the team build” means a teammate gets it from the self-contained build. “In Varun’s harness” means his own configuration has it but the team build does not yet, usually because it depends on his machine (the memory library, the helper model). “Varun’s machine” means a tool that runs there outside Claude Code.</p>
+  </div>
+  <div class="matrix" id="matrix"></div>
+</section>
+
+<section class="wrap sec" id="ledger">
+  <div class="sec-h">
+    <p class="meta"><span>the honest ledger</span><span>benefits and costs</span></p>
+    <h2>What it buys, and what it costs</h2>
+    <p>The harness is not free. Every benefit on the left has a price on the right, and the benchmark has not yet shown a quality lead.</p>
+  </div>
+  <div class="two">
+    <div class="bc" style="--c:var(--c-memory)">
+      <h3>What it buys</h3>
+      <ol>
+        <li><b>Risky actions are stopped by code, not by asking nicely.</b><span>Four guard hooks and 109 deny rules run before a tool call, whatever the model believes. Secrets and patient data are refused mechanically.</span></li>
+        <li><b>A mistake is fixed once.</b><span>Lessons are recalled on every prompt and the first time a file is opened, and every finished session is queued so new lessons can be mined from it.</span></li>
+        <li><b>“Done” has to be shown.</b><span>The definition of done asks for every requirement mapped to a test or a file, with real check output quoted. It targets the failure the benchmark saw most: summaries that claimed more than the code did (2 cases for the harness, 3 for plain).</span></li>
+        <li><b>Known methods for known work.</b><span>Nine engineering skills bring playbooks for security, test-first building, triage, agent reliability and launch audits.</span></li>
+        <li><b>Long sessions keep every request.</b><span>Your requests, the to-do list and unresolved failures survive compaction word for word.</span></li>
+        <li><b>It stays out of the way.</b><span>The guards blocked none of 713 tool calls in the benchmark, and the harness never refuses an ordinary request. When a person must decide, it asks once.</span></li>
+      </ol>
+    </div>
+    <div class="bc" style="--c:var(--c-block)">
+      <h3>What it costs</h3>
+      <ol>
+        <li><b>More reading on every turn.</b><span>The first turn reads 24,000 to 44,000 tokens against plain’s 19,000 to 39,000: about 5,000 more, and the rules and recalled lessons stay in the context.</span></li>
+        <li><b>A little latency.</b><span>The hooks add about 50 ms to a tool call, and 92 ms at worst.</span></li>
+        <li><b>Slower on hard tasks.</b><span>In round 2 the harness took 27% longer on five hard reruns: 7,735 seconds against 6,108.</span></li>
+        <li><b>No quality lead yet.</b><span>189 against 191 points over 15 blind-judged pairs is a tie within the judge’s own noise, and the judge would have merged the plain result on both round-3 tasks.</span></li>
+        <li><b>Friction by design.</b><span>A guard can stop a harmless command that looks risky. During setup, the push rules first flagged about a dozen harmless commands before they were tuned.</span></li>
+        <li><b>More to maintain.</b><span>Nine hook scripts, nine skills and 109 rules must stay correct as Claude Code changes. A heavier personal setup lost its first test 8 to 10 and ran about 50% slower, which is why the pack is a slim subset.</span></li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section class="wrap sec" id="bench">
+  <div class="sec-h">
+    <p class="meta"><span>blind benchmark</span><span>rounds 1 to 3</span><span>judged by opus 5</span></p>
+    <h2>What the benchmark says so far</h2>
+    <p>Eight tasks on three real Nodaris repositories (SMCP, AROS and NDE), from easy fixes to security and architecture work. Each task runs through both setups in separate clones. A separate model grades both against a hidden rubric without knowing which is which: 10 core checks and 5 stretch checks per task.</p>
+    <p>So far it is a tie on quality. What the harness adds today is safety and memory; what it costs is context, a little latency and time on hard tasks. The loop continues: every lost point becomes a rule, and rounds repeat until the harness wins two in a row.</p>
+  </div>
+  <div class="bars" id="bars"></div>
+  <div class="stats" id="stats"></div>
+  <p class="note">Before this loop, the full personal setup (every plugin, hook and memory system) lost its first test 8 to 10 and took 1,295 seconds against 859. The pack keeps only the parts that earn their cost. The judge’s scores move by two to three points between runs, so a single round decides nothing.</p>
+</section>
+
+<footer class="wrap">
+  <p>Built from the harness pack the benchmark ran (9 hook scripts on 8 events, 109 deny rules, 9 skills, the rules file and the Engineer style), each hook’s own documentation, and the scoreboards of rounds 1 to 3. The plain side shows the built-in features that matter for this comparison, not every feature of Claude Code; MCP servers, plugins and slash commands exist on both sides and are left out.</p>
+  <p>Updated 26 September 2026.</p>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" integrity="sha384-CI3ELBVUz9XQO+97x6nwMDPosPR5XvsxW2ua7N1Xeygeh1IxtgqtCkGfQY9WWdHu" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+(() => {
+'use strict';
+const reduceMotion = (() => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } })();
+const coarse = (() => { try { return matchMedia('(pointer: coarse)').matches; } catch (e) { return false; } })();
+
+/* ------------------------------------------------------------------ content */
+const CATS = {
+  engine: { name: "Engine", hex: "#8b9bb4", blurb: "Claude Code as it ships. Identical on both sides." },
+  pipeline: { name: "Pipeline", hex: "#f472b6", blurb: "The stages every change passes through: understand the ask, build safely, attack it, prove it." },
+  guards: { name: "Guards", hex: "#f0b429", blurb: "Code that stops a risky action before it runs, whatever the model thinks." },
+  memory: { name: "Memory", hex: "#3dd6c0", blurb: "Lessons carried from one session to the next." },
+  method: { name: "Method", hex: "#a78bfa", blurb: "Rules, playbooks and a checklist for how the work gets done." },
+  reach:  { name: "Reach",  hex: "#6ea8fe", blurb: "Tools beyond one model: other models, scanners and tests of the harness itself." },
+};
+const CAT_ORDER = ["engine", "pipeline", "guards", "memory", "method", "reach"];
+const WHERE = {
+  built: "Built into Claude Code",
+  team: "In the team build",
+  pack: "In Varun's harness, not the team build",
+  machine: "On Varun's machine, not in the pack yet",
+};
+const CAT_TEXT = {
+  engine: { plain: "All seven parts shown here ship with Claude Code.", ours: "The same seven parts. The harness changes how some of them are configured, not what they are." },
+  pipeline: { plain: "No pipeline. The model reads the request as typed and decides for itself when the work is safe and finished.", ours: "Twelve parts that turn a one-line request into engineered work: intake, a written spec, the healthcare knowledge, the app blueprint, a check at the first sensitive edit, a lint while code is written, self-attack, redaction, a security scan, an independent reviewer, a done gate that blocks, and a trust receipt." },
+  guards: { plain: "No guards. The permission prompt is the only brake, and unattended runs switch it off.", ours: "Six guards: the PHI gate, the secret guard, the destructive-command guard, 109 deny rules, the download scanner and push approval." },
+  memory: { plain: "Auto memory only: notes Claude chooses to save.", ours: "Recall on every prompt, lessons for each file, capture at the end of each session, a snapshot through compaction, and the lesson library they share." },
+  method: { plain: "No standing rules unless you write a CLAUDE.md, and 17 general skills.", ours: "Harness rules, the Engineer style, the prompt shaper, work tiers, nine engineering skills, the definition of done, the evidence log and no AI fingerprint." },
+  reach:  { plain: "One model, and no checks on the setup itself.", ours: "Delegation, other labs' opinions, security scanners, a 39-check self-test, the export check and the blind benchmark. All six run on Varun's machine today." },
+};
+
+const STAGES = [
+  { id: "start", name: "Session starts",
+    plain: "Claude Code loads its built-in tools, the 17 bundled skills, the auto memory index and your CLAUDE.md file, which is empty until you write one.",
+    ours: "The same, plus the harness rules, the Engineer style and nine engineering skills. After a compaction, the snapshot of your requests is put back first." },
+  { id: "ask", name: "You ask",
+    plain: "Your message goes to the model exactly as you typed it.",
+    ours: "The intake hook reads it first: it detects the test commands, flags a request that names no file as a description to turn into a spec, and hands a sensitive request the eight-point security checklist. On Varun's machine, memory recall attaches lessons that match the request, and the prompt shaper outlines the separate asks and the skills to use. The shaper's helper model only sees a prompt the PHI gate has scanned clean." },
+  { id: "plan", name: "It plans",
+    plain: "The model decides on its own how to approach the work, with the built-in agents and skills to hand.",
+    ours: "The rules size the job first: inline, orchestrated, or architectural with a brief, tests first and a review. Skills bring the playbook for security, testing or triage, and routine pieces can go to cheaper models." },
+  { id: "tool", name: "It runs a tool",
+    plain: "Reads run without asking. Edits and shell commands ask you first, unless prompts are off, as they are in unattended runs.",
+    ours: "Every call passes the secret guard and the destructive-command guard, and Claude Code checks its deny rules. Every write is linted for patient data in logs and realistic identifiers in fixtures, and the first edit to an auth, tenant or patient file brings the security checklist even if the request never mentioned it." },
+  { id: "result", name: "Result comes back",
+    plain: "The output goes straight back to the model.",
+    ours: "Anything cloned or installed is scanned. Malware is moved to quarantine, and prompt-injection or supply-chain findings are reported to Claude." },
+  { id: "done", name: "It says done",
+    plain: "The model writes a summary of what it did and decides for itself what to claim.",
+    ours: "The done gate will not let a coding turn end until a check passed after the last change and, for sensitive work, until attack tests ran, the security scan was clean and a threat model note exists. An independent reviewer reads the diff, and the trust receipt records what was proven. The evidence log records what was claimed against what ran, the session is queued for lessons, and on Varun's machine a push waits for approval." },
+  { id: "compact", name: "Context is compacted",
+    plain: "When the conversation fills the window, Claude Code replaces it with a summary and carries on.",
+    ours: "Before the summary, a script saves your requests word for word, the to-do list and unresolved failures, then restores them. What was learned flows back up the teal arc to the next session." },
+];
+
+const NODES = [
+  { id: "claudemd", cat: "engine", stage: "start", name: "CLAUDE.md", where: "built",
+    short: "A notes file Claude reads at the start of every session.",
+    what: "A plain text file of instructions that Claude reads at the start of every session.",
+    plain: "Empty until you write one, so Claude starts every session with no standing instructions.",
+    ours: "Holds the harness rules: how to report, when to stop and ask, how to size a job and what counts as done." },
+  { id: "automem", cat: "engine", stage: "start", name: "Auto memory", where: "built",
+    short: "Notes Claude chooses to save, indexed at session start.",
+    what: "A folder of short notes Claude can save about you and your projects. Their index is read at the start of each session.",
+    plain: "Built in. It starts empty and grows only when Claude decides something is worth saving.",
+    ours: "The same folder, plus a lesson library that hooks recall automatically (see the Memory branch)." },
+  { id: "skills17", cat: "engine", stage: "plan", name: "17 bundled skills", where: "built",
+    short: "General playbooks that ship with Claude Code.",
+    what: "Playbooks that ship with Claude Code, such as reviewing code or building a web page. Claude loads one when a task calls for it.",
+    plain: "All 17 are available.",
+    ours: "The same 17, plus nine engineering skills on the Method branch." },
+  { id: "agents5", cat: "engine", stage: "plan", name: "5 built-in agents", where: "built",
+    short: "Helpers Claude can start for side work.",
+    what: "Helpers Claude can start for side work: Explore, Plan, a general-purpose agent, the Claude Code guide and status line setup.",
+    plain: "Claude decides when to start them and how many.",
+    ours: "The same five. The rules cap a run at about five agents, because each agent turn re-reads tens of thousands of tokens." },
+  { id: "tools", cat: "engine", stage: "tool", name: "Built-in tools", where: "built",
+    short: "Read, edit, run commands, search and fetch web pages.",
+    what: "How Claude acts: reading and editing files, running shell commands, searching code and fetching web pages.",
+    plain: "A call runs as soon as the permission settings allow it.",
+    ours: "Every call first passes the guards on the Guards branch, and the first time a file is opened its lessons are shown." },
+  { id: "perms", cat: "engine", stage: "tool", name: "Permission prompts", where: "built",
+    short: "Asks before edits and shell commands; reads do not ask.",
+    what: "Claude Code asks you before it edits a file or runs a shell command. Reading files inside the project does not ask.",
+    plain: "On by default. The benchmark ran both sides with prompts off, so nobody had to click.",
+    ours: "Off. The deny rules and guards decide instead, and they never wait for a click." },
+  { id: "autocompact", cat: "engine", stage: "compact", name: "Auto-compaction", where: "built",
+    short: "Summarises the conversation when the window fills.",
+    what: "When the conversation nears the model's context window, Claude Code replaces it with a summary and carries on.",
+    plain: "The summary is written by the model and can lose details, including exactly what you asked for.",
+    ours: "The same summary, with a snapshot of your requests restored word for word after it (see Compaction snapshot)." },
+
+  { id: "hcdomain", cat: "pipeline", stage: "start", name: "Healthcare domain", where: "team",
+    short: "What a healthcare engineer knows and a vibe coder does not.",
+    what: "A skill with the HIPAA technical safeguards written as code requirements, the 18 Safe Harbor identifiers, minimum necessary access, X12 traps (adjustment code pairs, delimiter injection, envelopes), tenancy rules and how to build synthetic test data.",
+    buys: "Domain mistakes that look like working code (a denial code without its group, a real-looking test patient) are caught by knowledge, not luck.",
+    costs: "Its text joins the context when it is loaded.",
+    plain: "The model's general knowledge only." },
+  { id: "intake", cat: "pipeline", stage: "ask", name: "Intake", where: "team",
+    short: "Reads the request and the repository before the model does.",
+    what: "A hook on every prompt. It detects the repository's stack, test, lint and type commands and where tests live, so nobody has to know them. It flags a request that names no file or command as a description to turn into a spec, and gives any request about patients, tenants, sign-in, money, uploads or models the eight-point security checklist.",
+    buys: "A one-sentence request gets the same start a senior engineer would give it.",
+    costs: "A few hundred tokens on sensitive or vague requests. No model call, so it cannot leak anything.",
+    plain: "The request goes to the model exactly as typed." },
+  { id: "specfirst", cat: "pipeline", stage: "ask", name: "Spec first", where: "team",
+    short: "Turns a wish into a brief with acceptance checks.",
+    what: "A skill that finds the code that owns the behaviour, its callers and its tests, states the defect or feature precisely, lists acceptance checks, and for big work writes docs/specs/<feature>.md with requirements in EARS form, a design and tasks. It reuses the repository's own frameworks instead of inventing new ones.",
+    buys: "The model builds what was meant, in the style of the codebase.",
+    costs: "Minutes of reading before the first edit.",
+    plain: "Plan mode if you ask for it." },
+  { id: "blueprint", cat: "pipeline", stage: "plan", name: "App blueprint", where: "team",
+    short: "The foundations a new healthcare app needs before its first feature.",
+    what: "For a new application, twelve foundations in order, each with the test that proves it: a verify script, hardened settings, practice separation from day one, sign-in with MFA, roles that deny by default, an append-only audit log, field encryption for identifiers, logging that drops patient data, bounded input, synthetic seed data, a threat model and CI.",
+    buys: "A practice owner who asks for an intake form gets an application that could hold real patient data, and a list of what a person must still arrange.",
+    costs: "A new app takes longer to reach its first screen.",
+    plain: "The feature that was asked for, on the framework defaults." },
+  { id: "pathtrigger", cat: "pipeline", stage: "tool", name: "Sensitive-file trigger", where: "team",
+    short: "The security checklist arrives at the first risky edit.",
+    what: "The first time the model edits a file about sign-in, tenants, patients, claims or payments, the security checklist is added to its context, even if the request never mentioned security.",
+    buys: "Risky work is treated as risky whether or not the person asking knew it was.",
+    costs: "Once per session, a few hundred tokens.",
+    plain: "Nothing notices." },
+  { id: "philint", cat: "pipeline", stage: "tool", name: "PHI lint", where: "team",
+    short: "Flags patient data in logs and real-looking test data as it is written.",
+    what: "After every write, a scan for patient fields in log and print lines, exception text interpolated into logs, and realistic identifiers in fixtures: social security numbers, phone numbers, real email domains, plausible names and birth dates. It names the line to fix.",
+    buys: "The most common healthcare leak, a log line, is fixed in the minute it is written.",
+    costs: "Milliseconds per write. It warns; it does not block.",
+    plain: "Found in review, if at all." },
+  { id: "selfattack", cat: "pipeline", stage: "tool", name: "Self-attack", where: "team",
+    short: "The model attacks its own change under written rules.",
+    what: "After building on a sensitive surface, the model attacks its own change: another tenant's data, missing or bypassed sign-in, forged identity fields, mass assignment, SQL, X12 and CSV injection, prompt injection, oversized input, patient data in errors, replay and money integrity. Each attack becomes a test that fails on the unsafe version. Rules of engagement: this machine only, local addresses only, synthetic data only, nothing destructive, every finding fixed or pinned by a test.",
+    buys: "Security is shown by tests that tried to break it, not asserted in a summary.",
+    costs: "The longest stage on sensitive work.",
+    plain: "Tests for the happy path, if the model writes any." },
+  { id: "redact", cat: "pipeline", stage: "result", name: "Redaction", where: "team",
+    short: "Makes a log or X12 file safe to share before it leaves the machine.",
+    what: "A tool that replaces names, dates, identifiers, social security numbers, phones and the identifying elements inside a real X12 envelope with consistent pseudonyms, so the structure still reads. It refuses to write anything when it cannot vouch for the result.",
+    buys: "An error log or a remittance file can go into a ticket or a chat without the patient in it.",
+    costs: "Regular-expression detection: free-text names outside labelled fields can be missed, so it is a filter, not a guarantee.",
+    plain: "Copy and paste." },
+  { id: "scan", cat: "pipeline", stage: "done", name: "Security scan", where: "team",
+    short: "Secrets, vulnerable patterns and vulnerable dependencies in what changed.",
+    what: "Runs gitleaks, semgrep (OWASP Top Ten, secrets, Python, TypeScript, React rules), bandit and osv-scanner over the files the change touched, in seconds. Secret values are never printed. Committing does not escape it.",
+    buys: "Whole classes of mistakes are caught by tools every time.",
+    costs: "The scanners must be installed; it names any that are missing.",
+    plain: "Scanners run only if someone asks." },
+  { id: "reviewer", cat: "pipeline", stage: "done", name: "Security reviewer", where: "team",
+    short: "A read-only second pair of eyes on the diff.",
+    what: "An agent that can only read. It reviews a sensitive diff against seven categories (access, identity binding, injection, data exposure, input bounds, error paths, audit) and reports findings without ever printing an identifier.",
+    buys: "In the smoke run it found two fail-open paths the author had missed; both were fixed before the summary.",
+    costs: "One more agent run on sensitive work.",
+    plain: "Only if you ask for a review." },
+  { id: "donegate", cat: "pipeline", stage: "done", name: "Done gate", where: "team",
+    short: "The turn cannot end until the evidence exists.",
+    what: "A hook on every stop. A coding turn cannot end until a check passed after the last change. For sensitive work it also needs attack tests that ran and passed, a clean security scan after the last sensitive change and a threat model note. It names the exact command, stops at most twice a turn, and never blocks a turn that changed no code.",
+    buys: "“Done” means proven, not claimed.",
+    costs: "The model sometimes has to go back and do the part it skipped.",
+    plain: "The model decides when it is done." },
+  { id: "receipt", cat: "pipeline", stage: "done", name: "Trust receipt", where: "team",
+    short: "What the session proved, for someone who does not read code.",
+    what: "A report built from what the hooks recorded, never from the model's summary: checks after the last change, attack tests, the scan, the threat model, the review, every time the gate stopped the model, and what was never verified.",
+    buys: "A practice owner or reviewer can see what was proven without reading the code.",
+    costs: "None during the session.",
+    plain: "The model's own summary." },
+
+  { id: "phigate", cat: "guards", stage: "ask", name: "PHI gate", where: "pack",
+    short: "Keeps patient data away from the prompt shaper's helper model.",
+    what: "PHI is protected health information: anything that identifies a patient. Before the prompt shaper sends anything to its helper model on OpenRouter, which has no BAA (the contract HIPAA requires before a vendor may handle patient data), the whole prompt is scanned. If it finds patient data, or the scanner itself is missing, the call is skipped.",
+    buys: "Patient data cannot reach a provider without a BAA through the harness's own helper calls.",
+    costs: "The shaper's outline is lost for that prompt. An update that also catches dates and web addresses is staged and waits for Varun to install it.",
+    plain: "There is no helper model to guard, and nothing scans prompts for patient data." },
+  { id: "secretguard", cat: "guards", stage: "tool", name: "Secret guard", where: "team",
+    short: "Refuses commands that would bring a key or a .env file into the chat.",
+    what: "A hook that runs before every tool call. It refuses anything that would bring a secret into the conversation or copy it elsewhere: .env files, key files, cloud credentials, the keychain, or printing the environment. Programs that only load a .env file are allowed. It also refuses any push that tries to skip the approval step.",
+    buys: "A key cannot land in a transcript, a log or a model provider's request by accident.",
+    costs: "Now and then it stops a harmless command that looks like one of these, and the rule has to be tuned.",
+    plain: "Reading a .env file inside the project runs without asking." },
+  { id: "destructive", cat: "guards", stage: "tool", name: "Destructive-command guard", where: "team",
+    short: "Pauses or blocks commands that delete files or rewrite history.",
+    what: "A hook that pauses or blocks commands that delete files, rewrite git history or change protected paths, before they run.",
+    buys: "A confident model's stray delete is stopped by code, whatever the model thinks.",
+    costs: "It can ask about a command that was safe in context.",
+    plain: "Relies on the permission prompt, which unattended runs switch off." },
+  { id: "denyrules", cat: "guards", stage: "tool", name: "Deny rules", where: "team",
+    short: "Built-in rules: never read key files, keychains or .env files.",
+    what: "Rules Claude Code enforces itself before a tool runs: no reading or editing key files, keychains, .env files or the guards themselves. Varun's harness carries 109; the team build carries the 71 that apply to any machine, plus four that protect its own guards and settings.",
+    buys: "A second layer that does not depend on any hook script.",
+    costs: "One more list to keep current as tools change.",
+    plain: "No deny rules until you write them." },
+  { id: "scanner", cat: "guards", stage: "result", name: "Download scanner", where: "pack",
+    short: "Scans every repository Claude clones or installs.",
+    what: "Every repository Claude clones or installs is scanned when the command returns. Malware moves the checkout to quarantine; prompt-injection and supply-chain findings are reported to Claude. Installs are checked before they run and fail closed.",
+    buys: "Code from the internet is checked before anyone runs it.",
+    costs: "A scan after every clone or install.",
+    plain: "Clones and installs run unchecked." },
+  { id: "pushgate", cat: "guards", stage: "done", name: "Push and merge approval", where: "machine",
+    short: "Every push or merge waits for a one-time approval.",
+    what: "Every push or merge needs a one-time approval that Varun gives from a phone. The secret guard refuses tricks that try to skip it.",
+    buys: "Nothing reaches GitHub without a person saying yes.",
+    costs: "Shipping waits until someone approves.",
+    plain: "A push runs as soon as the permission settings allow it." },
+
+  { id: "recall", cat: "memory", stage: "ask", name: "Memory recall", where: "pack",
+    short: "Attaches matching lessons and past decisions to each prompt.",
+    what: "Before Claude reads your message, a hook attaches the best-matching lessons, notes, known traps and past decisions to it.",
+    buys: "A mistake fixed once stays fixed: Claude starts from what was learned instead of relearning it.",
+    costs: "More text on every prompt, part of the extra 5,000 tokens a turn. It gives up after 3.2 seconds rather than hold you up.",
+    plain: "Only the auto memory index, and only what Claude chose to save." },
+  { id: "filelessons", cat: "memory", stage: "tool", name: "File lessons", where: "pack",
+    short: "Lessons, dependents and tests the first time a file is opened.",
+    what: "The first time Claude opens a file in a session, a hook shows up to three lessons about that file, the files that depend on it and the tests that touch it.",
+    buys: "Claude sees the trap before it steps on it, and knows what else a change can break.",
+    costs: "A little extra reading, once per file. It gives up after one second.",
+    plain: "Claude finds dependents only if it thinks to search." },
+  { id: "capture", cat: "memory", stage: "done", name: "Memory capture", where: "pack",
+    short: "Queues each finished session for lesson mining.",
+    what: "When Claude stops, the session is added to a queue so its lessons can be mined into the library. It prints nothing and never blocks.",
+    buys: "Learning happens without anyone writing notes.",
+    costs: "Mining runs separately on Varun's machine, and a mined lesson is only as good as its evidence.",
+    plain: "Nothing is learned unless Claude decides to save a note." },
+  { id: "snapshot", cat: "memory", stage: "compact", name: "Compaction snapshot", where: "pack",
+    short: "Keeps your requests word for word through compaction.",
+    what: "Before the conversation is summarised, a script copies your requests word for word, the to-do list, failing commands and background jobs, and restores them after the summary.",
+    buys: "In a long session, no request is paraphrased away or forgotten.",
+    costs: "A few thousand tokens after each compaction in a long session.",
+    plain: "Only the model's own summary survives." },
+  { id: "library", cat: "memory", stage: "compact", name: "Lesson library", where: "machine",
+    short: "Where mined lessons live, each with triggers and evidence.",
+    what: "Where lessons live, each with its triggers, what to do, what not to do and why. Memory recall and file lessons read from it; the teal arc shows lessons flowing back to the next session.",
+    buys: "Knowledge that compounds across sessions and, later, across the team.",
+    costs: "Lessons can go stale. Each one cites its evidence so a stale one can be caught.",
+    plain: "No library." },
+
+  { id: "rules", cat: "method", stage: "start", name: "Harness rules", where: "team",
+    short: "Standards read every session: reporting, asking, sizing, done.",
+    what: "About 8,500 characters of rules read at the start of every session: how to report, when to stop and ask, how to size a job, the healthcare security bar and the definition of done. The user always decides; the harness never refuses ordinary work.",
+    buys: "Every session starts from the same standards, for every teammate.",
+    costs: "About 2,000 tokens read on every turn.",
+    plain: "Nothing, unless you write your own CLAUDE.md." },
+  { id: "style", cat: "method", stage: "start", name: "Engineer style", where: "team",
+    short: "Plain sentences, and a status line only when it matters.",
+    what: "An output style: plain full sentences, a one-line status only when something matters, and a final reply that explains what changed and why.",
+    buys: "Updates you can read without decoding.",
+    costs: "Not measured on its own.",
+    plain: "The default style." },
+  { id: "shaper", cat: "method", stage: "ask", name: "Prompt shaper", where: "pack",
+    short: "Outlines the asks, the goal and the skills to use.",
+    what: "A hook that reads your message and adds a short outline beside it: the separate asks, the goal and the stop condition, open questions, which skills fit and how much effort to spend. It never changes or blocks your message.",
+    buys: "A request with several parts is less likely to lose one.",
+    costs: "A call to a small helper model on each longer prompt. Short, structured or sensitive prompts skip it.",
+    plain: "The model reads the request on its own." },
+  { id: "tiers", cat: "method", stage: "plan", name: "Work tiers", where: "team",
+    short: "Sizes the job: inline, orchestrated or architectural.",
+    what: "Sizes every job before it starts: a quick inline change; an orchestrated change with a fresh review; or an architectural change (migrations, contracts, authentication, patient data, payments) that needs a brief, tests first and a review.",
+    buys: "Risky changes get the ceremony; small ones do not.",
+    costs: "Architectural work is slower on purpose.",
+    plain: "The model decides how careful to be." },
+  { id: "skills9", cat: "method", stage: "plan", name: "9 engineering skills", where: "pack", hub: true,
+    short: "Playbooks for building, security, testing, triage and review.",
+    what: "Nine playbooks Claude loads when the work calls for them. The small dots circling this node are the skills; click one to read it. The team build carries five of them (secure build, test first, triage, grill me and agent reliability) alongside the four pipeline skills.",
+    buys: "Security, testing and review follow a known method instead of improvisation.",
+    costs: "A loaded skill adds its text to the context for the rest of the task.",
+    plain: "Only the 17 general skills." },
+  { id: "dod", cat: "method", stage: "done", name: "Definition of done", where: "team",
+    short: "Every requirement mapped to evidence before “done”.",
+    what: "Before Claude may say done: every requirement is mapped to a test or a file, the full checks run once and their exit codes are quoted, every reader and writer of a changed field is found, and judgment calls are named for the owner.",
+    buys: "It targets the failure the benchmark saw most: summaries that claimed a check or behaviour the code did not have.",
+    costs: "More reading, and one full check run at the end.",
+    plain: "The model decides when it is done and what to claim." },
+  { id: "evidence", cat: "method", stage: "done", name: "Evidence log", where: "pack",
+    short: "Logs what was claimed against what actually ran.",
+    what: "At every stop, a hook on Varun's machine logs what changed, which checks ran and passed, and whether the reply claims the work is done. It never blocks; the done gate in the pipeline is the part that blocks.",
+    buys: "A measured record of claims against evidence across every session, not only harness ones.",
+    costs: "Nothing in the session; a log file grows.",
+    plain: "No record." },
+  { id: "nofinger", cat: "method", stage: "done", name: "No AI fingerprint", where: "team",
+    short: "No AI-authorship lines in commits, pull requests or code.",
+    what: "Commit and pull request attribution is switched off, and the rules forbid AI-authorship markers anywhere in code, comments or documents.",
+    buys: "The work reads as the team's own.",
+    costs: "None.",
+    plain: "Adds a Claude co-author line to commits and a footer to pull requests by default." },
+
+  { id: "selftest", cat: "reach", stage: "start", name: "Self-test", where: "machine",
+    short: "39 checks that prove the harness is really switched on.",
+    what: "A script that proves the installed harness works: the guards block what they should, the hooks answer in time and the settings match.",
+    buys: "Proof that the safety layer is actually on, not just configured.",
+    costs: "36 of 39 checks pass today; the other 3 wait for the staged PHI gate update.",
+    plain: "Nothing to test." },
+  { id: "delegate", cat: "reach", stage: "plan", name: "Delegation", where: "machine",
+    short: "Routine edits go to cheaper models; Claude reviews them.",
+    what: "Bounded, routine edits can be handed to cheaper open models through a local gateway. Claude reviews the diff and runs the tests.",
+    buys: "The main model's quota goes to the hard parts.",
+    costs: "Another model's work to review. Never used for security-sensitive code or patient data.",
+    plain: "Everything runs on the one model." },
+  { id: "panel", cat: "reach", stage: "plan", name: "Other labs' opinions", where: "machine",
+    short: "Independent answers from OpenAI and Google models.",
+    what: "For an architecture choice, or a bug that survived two fixes, independent one-shot answers from OpenAI and Google models. Each claim is checked against the code before anything acts on it.",
+    buys: "A second opinion from models trained differently.",
+    costs: "Only for material with no secrets or patient data. Paid seats need Varun's approval each time.",
+    plain: "One model's view." },
+  { id: "scanners", cat: "reach", stage: "done", name: "Security scanners", where: "machine",
+    short: "A security baseline before sensitive work is called done.",
+    what: "A baseline script runs the security scanners on a repository before work on authentication, patient data, payments or public endpoints is called done.",
+    buys: "Whole classes of issues are caught by tools, not by memory.",
+    costs: "The scanners must be installed, and sensitive work takes longer to finish.",
+    plain: "Scanners run only if someone asks." },
+  { id: "exportcheck", cat: "reach", stage: "compact", name: "Export check", where: "machine",
+    short: "Checks a team pack for secrets, patient data and personal files.",
+    what: "Before the team build is handed to a teammate, a script checks every file in it for secrets, patient data and personal material, and runs the security scanners over it.",
+    buys: "The harness can be shared without leaking anything from the machine it was built on.",
+    costs: "One more gate before a release.",
+    plain: "Nothing to export." },
+  { id: "bench", cat: "reach", stage: "compact", name: "Blind benchmark", where: "machine",
+    short: "Both setups run the same tasks; a judge grades them blind.",
+    what: "The same engineering tasks run through plain Claude Code and through the harness. A separate model grades both against a hidden rubric without knowing which is which.",
+    buys: "Claims about the harness are measured, not assumed.",
+    costs: "Hours of model time per round, and the judge's scores move two to three points between runs.",
+    plain: "No measurement." },
+];
+
+const SKILLS = [
+  ["engineering-os", "The build pipeline: recall memory, size the job, gate it, verify it, review it and record the lesson."],
+  ["secure-build", "The healthcare security bar: a threat model first, cross-tenant tests, scanners and a prompt-injection suite before anything is called pen-test ready."],
+  ["pocock-tdd", "Test first, one thin slice at a time: red, green, refactor."],
+  ["pocock-triage", "Moves incoming bugs and feature requests through clear states until each one is ready to work on."],
+  ["pocock-grill-me", "Questions a plan relentlessly until every branch of the decision is settled."],
+  ["compound", "At the end of a task, turns what was learned into a lesson the memory will recall next time."],
+  ["orchestrate-lean", "Sizes a multi-agent run before launch, caps its spend and reads the cost back afterwards."],
+  ["build-agent-reliability", "Hardens agent workflows: typed contracts, safe retries, approval gates, logs and evaluations."],
+  ["pre-deploy-audit", "A launch gate for websites: crawlability, metadata, Core Web Vitals and WCAG 2.2 AA accessibility."],
+];
+
+const ROUNDS = [
+  { name: "Round 1", sub: "Sonnet 5 · 8 tasks", ours: 100, plain: 103, max: 120 },
+  { name: "Round 2", sub: "Sonnet 5 · the 5 tasks that lost points", ours: 61, plain: 61, max: 75 },
+  { name: "Round 3", sub: "Opus 5 · 2 tasks before the quota cut", ours: 28, plain: 27, max: 30 },
+  { name: "All rounds", sub: "15 task pairs", ours: 189, plain: 191, max: 225, total: true },
+];
+const STATS = [
+  { k: "Context read on the first turn", ours: "24k–44k tokens", plain: "19k–39k tokens", n: "The rules, the skills list and recalled lessons are read on every turn." },
+  { k: "Hook time per tool call", ours: "≈50 ms, 92 ms worst", plain: "None", n: "Measured across the benchmark runs." },
+  { k: "Time, round 1", ours: "6,318 s", plain: "6,383 s", n: "Eight tasks on Sonnet 5." },
+  { k: "Time, round 2", ours: "7,735 s", plain: "6,108 s", n: "Five hard reruns: the harness took 27% longer." },
+  { k: "Summaries that overstated", ours: "2", plain: "3", n: "The judge found a claimed check or behaviour the code did not have." },
+  { k: "Perfect 15 of 15 scores", ours: "2", plain: "1", n: "Both aced the same security task once; the harness also aced an architecture task." },
+  { k: "Tool calls, and how many a guard blocked", ours: "713, none blocked", plain: "697, none blocked", n: "The guards never stopped legitimate work in the benchmark." },
+];
+
+/* ------------------------------------------------------------------ page sections */
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const api = { ready: false, focusCat() {}, showNode() {} };
+
+function buildChips() {
+  const host = $("#chips");
+  const n = {}; CAT_ORDER.forEach(c => { n[c] = NODES.filter(x => x.cat === c).length; });
+  host.innerHTML = CAT_ORDER.map(c => {
+    const plain = c === "engine" ? n[c] : 0;
+    const extra = c === "method" ? " + 9 skills" : "";
+    return `<button type="button" class="chip" data-cat="${c}" aria-pressed="false" style="--c:${CATS[c].hex}" title="${esc(CATS[c].blurb)}"><i></i>${CATS[c].name}<b>${plain} vs ${n[c]}${extra}</b></button>`;
+  }).join("");
+  host.addEventListener("click", e => {
+    const b = e.target.closest(".chip");
+    if (!b) return;
+    if (api.ready) api.focusCat(b.dataset.cat);
+    else { const g = document.getElementById("grp-" + b.dataset.cat); if (g) g.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" }); }
+  });
+}
+
+function buildMatrix() {
+  const host = $("#matrix");
+  let html = `<div class="m-head" aria-hidden="true"><span>Part</span><span>What it does</span><span>Plain</span><span>Harness</span></div>`;
+  for (const cat of CAT_ORDER) {
+    const c = CATS[cat], list = NODES.filter(x => x.cat === cat);
+    const plainN = cat === "engine" ? list.length : 0;
+    html += `<div class="m-group" id="grp-${cat}" style="--c:${c.hex}"><div class="m-gh"><i></i><h3>${c.name}</h3><span>${plainN} vs ${list.length}${cat === "method" ? " + 9 skills" : ""}</span><p>${esc(c.blurb)}</p></div>`;
+    for (const x of list) {
+      const plainCell = cat === "engine" ? `<em class="yes">Built in</em>` : `<em class="no">Not included</em>`;
+      const oursCell = cat === "engine" ? `<em class="yes">Built in</em>` : x.where === "pack" ? `<em class="w-pack">In the pack</em>` : `<em class="w-machine">Varun’s machine</em>`;
+      html += `<button type="button" class="m-row" data-id="${x.id}"><span class="m-name">${esc(x.name)}</span><span class="m-what">${esc(x.short)}</span><span class="m-plain">${plainCell}</span><span class="m-ours">${oursCell}</span></button>`;
+    }
+    html += `</div>`;
+  }
+  host.innerHTML = html;
+  host.addEventListener("click", e => { const b = e.target.closest(".m-row"); if (b && api.ready) api.showNode(b.dataset.id); });
+}
+
+function buildBench() {
+  const bars = $("#bars");
+  bars.innerHTML = ROUNDS.map(r => `
+    <div class="br${r.total ? " total" : ""}">
+      <div class="br-l"><b>${r.name}</b><span>${esc(r.sub)}</span></div>
+      <div class="br-b">
+        <div class="bar-row"><span>Harness</span><div class="track"><div class="fill ours" style="--w:${(r.ours / r.max * 100).toFixed(1)}%"></div></div><span class="num">${r.ours} / ${r.max}</span></div>
+        <div class="bar-row"><span>Plain</span><div class="track"><div class="fill plain" style="--w:${(r.plain / r.max * 100).toFixed(1)}%"></div></div><span class="num">${r.plain} / ${r.max}</span></div>
+      </div>
+    </div>`).join("");
+  const fills = bars.querySelectorAll(".fill");
+  const go = () => fills.forEach(f => f.classList.add("on"));
+  if (reduceMotion || !("IntersectionObserver" in window)) go();
+  else {
+    const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { go(); io.disconnect(); } }, { threshold: 0.3 });
+    io.observe(bars);
+  }
+  $("#stats").innerHTML = STATS.map(s => `<div class="stat"><p class="k">${esc(s.k)}</p><div class="vs"><div class="o"><span>Harness</span><b>${esc(s.ours)}</b></div><div><span>Plain</span><b>${esc(s.plain)}</b></div></div><p class="n">${esc(s.n)}</p></div>`).join("");
+}
+
+buildChips();
+buildMatrix();
+buildBench();
+
+/* ------------------------------------------------------------------ 3D scene */
+function init3D() {
+  const vp = $("#viewport"), canvas = $("#gl"), linesCv = $("#lines"), labelsEl = $("#labels");
+  const card = $("#card"), consoleEl = $("#console");
+  const fail = () => {
+    $("#fallback").hidden = false;
+    [canvas, linesCv, labelsEl].forEach(el => el.remove());
+    document.querySelectorAll("#stage .bar, #stage .hint").forEach(el => el.remove());
+    consoleEl.hidden = true;
+    vp.classList.add("failed");
+    return false;
+  };
+  if (typeof THREE === "undefined") return fail();
+  const T = THREE;
+  let renderer;
+  try { renderer = new T.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: "high-performance" }); }
+  catch (e) { return fail(); }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setClearColor(0x000000, 0);
+
+  const DEG = Math.PI / 180, V3 = T.Vector3;
+  const SP = 3.6, R = 2.6, GAP = 0.72, HUB_GAP = 1.0, STAGE_T = 1.45;
+  const FIRST = { engine: 0.8, pipeline: 0.9, guards: 0.95, memory: 0.75, method: 1.45, reach: 1.25 };
+  const GX = { plain: -8, ours: 7.7 };
+  const LANES = { plain: { engine: 0 }, ours: { engine: 180, pipeline: 250, guards: 80, memory: 35, method: 350, reach: 300 } };
+  STAGES.forEach((s, i) => { s.i = i; s.y = 10.8 - i * SP; });
+  const STAGE = {}; STAGES.forEach(s => { STAGE[s.id] = s; });
+  const Y_TOP = STAGES[0].y + 1.8, Y_END = STAGES[6].y - SP;
+  const PACKET = "#dce8ff", RED_HEX = "#ff6b6b", AMBER_HEX = "#f0b429";
+  const GROUND = new T.Color("#0b0f17"), RED = new T.Color(RED_HEX), COMMIT_C = new T.Color("#cfe0ff");
+  const RGB = {};
+  for (const k of CAT_ORDER) { const n = parseInt(CATS[k].hex.slice(1), 16); RGB[k] = [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+  const rgba = (rgb, a) => `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${Math.max(0, Math.min(1, a)).toFixed(3)})`;
+  const lp = (g, ang, d, y) => new V3(GX[g] + Math.cos(ang * DEG) * d, y, Math.sin(ang * DEG) * d);
+
+  class Route {
+    constructor(pts) {
+      this.pts = pts; this.cum = new Float32Array(pts.length); let L = 0;
+      for (let i = 1; i < pts.length; i++) { L += pts[i].distanceTo(pts[i - 1]); this.cum[i] = L; }
+      this.len = L;
+    }
+    at(s, out) {
+      const p = this.pts, c = this.cum, n = p.length;
+      if (s <= 0) return out.copy(p[0]);
+      if (s >= this.len) return out.copy(p[n - 1]);
+      let lo = 0, hi = n - 1;
+      while (hi - lo > 1) { const m = (lo + hi) >> 1; if (c[m] <= s) lo = m; else hi = m; }
+      return out.copy(p[lo]).lerp(p[hi], (s - c[lo]) / (c[hi] - c[lo] || 1));
+    }
+  }
+  class PolyCurve extends T.Curve {
+    constructor(route) { super(); this.route = route; }
+    getPoint(t, out = new V3()) { return this.route.at(t * this.route.len, out); }
+  }
+  function sCurve(g, ang, d0, y0, d1, y1, n) {
+    const pts = [], ym = (y0 + y1) / 2;
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, u = 1 - t, b0 = u * u * u, b1 = 3 * u * u * t, b2 = 3 * u * t * t, b3 = t * t * t;
+      pts.push(lp(g, ang, (b0 + b1) * d0 + (b2 + b3) * d1, b0 * y0 + (b1 + b2) * ym + b3 * y1));
+    }
+    return pts;
+  }
+
+  const scene = new T.Scene();
+  scene.fog = new T.Fog(0x0c1220, 40, 90);
+  const camera = new T.PerspectiveCamera(32, 1, 0.5, 500);
+  scene.add(new T.AmbientLight(0xffffff, 0.62));
+  const sun = new T.DirectionalLight(0xffffff, 0.75);
+  sun.position.set(-8, 14, 16);
+  scene.add(sun);
+
+  /* one git-style fork, run of commits and merge per side, kind and stage */
+  const items = [], groups = [], groupsAt = { plain: {}, ours: {} };
+  for (const g of ["plain", "ours"]) {
+    for (const [cat, ang] of Object.entries(LANES[g])) {
+      for (const st of STAGES) {
+        const members = NODES.filter(n => n.cat === cat && n.stage === st.id);
+        if (!members.length) continue;
+        const ys = [];
+        members.forEach((n, k) => ys.push(k === 0 ? st.y - FIRST[cat] : ys[k - 1] - ((n.hub || members[k - 1].hub) ? HUB_GAP : GAP)));
+        const fork = sCurve(g, ang, 0, st.y, R, ys[0], 22);
+        const forkLen = new Route(fork).len;
+        const pts = fork.slice();
+        for (let k = 1; k < ys.length; k++) pts.push(lp(g, ang, R, ys[k]));
+        const merge = sCurve(g, ang, R, ys[ys.length - 1], 0, st.y - SP, 22);
+        merge.shift();
+        pts.push(...merge);
+        const grp = { g, cat, stage: st.id, route: new Route(pts), items: [], b: 1, bT: 1 };
+        members.forEach((n, k) => {
+          const it = { node: n, g, cat, stage: st.id, pos: lp(g, ang, R, ys[k]), s: forkLen + (ys[0] - ys[k]), r: n.hub ? 0.4 : 0.27,
+                       pulse: 0, flash: 0, b: 1, bT: 1, group: grp, sx: 0, sy: 0, depth: 1, front: true };
+          grp.items.push(it);
+          items.push(it);
+        });
+        groups.push(grp);
+        (groupsAt[g][st.id] = groupsAt[g][st.id] || []).push(grp);
+      }
+    }
+  }
+
+  /* the nine skills orbit their hub */
+  const hub = items.find(it => it.g === "ours" && it.node.hub);
+  const ma = LANES.ours.method * DEG;
+  const mu = new V3(Math.cos(ma), 0, Math.sin(ma)), mt = new V3(-Math.sin(ma), 0, Math.cos(ma));
+  const RING_E1 = mu.clone().multiplyScalar(Math.cos(50 * DEG)).addScaledVector(mt, Math.sin(50 * DEG)).normalize();
+  const RING_E2 = new V3().crossVectors(RING_E1, new V3(0, 1, 0)).normalize().multiplyScalar(0.8).add(new V3(0, 0.6, 0)).normalize();
+  const RING_R = 0.82;
+  const sats = SKILLS.map(([name, what], k) => {
+    const it = { node: { id: "skill-" + name, cat: "method", stage: "plan", name, where: "pack", what, sat: true }, g: "ours", cat: "method", stage: "plan",
+                 pos: new V3(), r: 0.13, pulse: 0, flash: 0, b: 1, bT: 1, group: hub.group, sat: true, phase: k / SKILLS.length * Math.PI * 2,
+                 sx: 0, sy: 0, depth: 1, front: true };
+    items.push(it);
+    return it;
+  });
+  let ringAngle = 0;
+  const placeSats = () => {
+    for (const s of sats) {
+      const a = s.phase + ringAngle;
+      s.pos.copy(hub.pos).addScaledVector(RING_E1, Math.cos(a) * RING_R).addScaledVector(RING_E2, Math.sin(a) * RING_R);
+    }
+  };
+  placeSats();
+
+  /* commits on each trunk */
+  const commits = [];
+  for (const g of ["plain", "ours"]) {
+    for (const st of STAGES) commits.push({ g, stage: st.id, pos: new V3(GX[g], st.y, 0), r: 0.3, pulse: 0, flash: 0, b: 1, bT: 1, sx: 0, sy: 0, front: true });
+    commits.push({ g, stage: "end", pos: new V3(GX[g], Y_END, 0), r: 0.2, pulse: 0, flash: 0, b: 1, bT: 1, sx: 0, sy: 0, front: true });
+  }
+  const commitAt = {};
+  commits.forEach(c => { commitAt[c.g + ":" + c.stage] = c; });
+
+  /* tubes, trunks, lane rails and the skills ring */
+  for (const grp of groups) {
+    grp.mat = new T.MeshBasicMaterial({ color: CATS[grp.cat].hex, transparent: true, opacity: 0.9 });
+    scene.add(new T.Mesh(new T.TubeGeometry(new PolyCurve(grp.route), Math.max(30, Math.ceil(grp.route.len * 10)), 0.05, 6, false), grp.mat));
+  }
+  const trunkMat = new T.MeshBasicMaterial({ color: "#9cc0ff", transparent: true, opacity: 0.85 });
+  for (const g of ["plain", "ours"]) {
+    scene.add(new T.Mesh(new T.TubeGeometry(new T.LineCurve3(new V3(GX[g], Y_TOP, 0), new V3(GX[g], Y_END, 0)), 16, 0.075, 8, false), trunkMat));
+  }
+  {
+    const pos = [], col = [];
+    for (const g of ["plain", "ours"]) for (const [cat, ang] of Object.entries(LANES[g])) {
+      const a = lp(g, ang, R, Y_TOP - 0.6), b = lp(g, ang, R, Y_END + 0.6), c = new T.Color(CATS[cat].hex);
+      pos.push(a.x, a.y, a.z, b.x, b.y, b.z);
+      col.push(c.r, c.g, c.b, c.r, c.g, c.b);
+    }
+    const geo = new T.BufferGeometry();
+    geo.setAttribute("position", new T.Float32BufferAttribute(pos, 3));
+    geo.setAttribute("color", new T.Float32BufferAttribute(col, 3));
+    const rails = new T.LineSegments(geo, new T.LineDashedMaterial({ vertexColors: true, dashSize: 0.16, gapSize: 0.26, transparent: true, opacity: 0.2 }));
+    rails.computeLineDistances();
+    scene.add(rails);
+  }
+  const ringLine = (() => {
+    const pts = [];
+    for (let i = 0; i <= 96; i++) {
+      const a = i / 96 * Math.PI * 2;
+      pts.push(hub.pos.clone().addScaledVector(RING_E1, Math.cos(a) * RING_R).addScaledVector(RING_E2, Math.sin(a) * RING_R));
+    }
+    const l = new T.Line(new T.BufferGeometry().setFromPoints(pts), new T.LineBasicMaterial({ color: CATS.method.hex, transparent: true, opacity: 0.35 }));
+    scene.add(l);
+    return l;
+  })();
+
+  /* the memory loop: lessons flow from the library back up to recall */
+  const libIt = items.find(it => it.g === "ours" && it.node.id === "library");
+  const recIt = items.find(it => it.g === "ours" && it.node.id === "recall");
+  const bulge = new V3(0.45, 0, 1).normalize().multiplyScalar(4.2);
+  const arcCurve = new T.CubicBezierCurve3(libIt.pos.clone(), libIt.pos.clone().add(bulge).add(new V3(0, 3, 0)),
+                                           recIt.pos.clone().add(bulge).add(new V3(0, -3, 0)), recIt.pos.clone());
+  const arcRoute = new Route(arcCurve.getSpacedPoints(120));
+  const arc = { mat: new T.MeshBasicMaterial({ color: CATS.memory.hex, transparent: true, opacity: 0.4 }), b: 1, bT: 1 };
+  scene.add(new T.Mesh(new T.TubeGeometry(arcCurve, 140, 0.035, 6, false), arc.mat));
+
+  /* nodes and commits as instanced spheres */
+  const sphere = new T.SphereGeometry(1, 22, 16);
+  const nodeMesh = new T.InstancedMesh(sphere, new T.MeshLambertMaterial({ color: 0xffffff }), items.length);
+  items.forEach((it, i) => { it.i = i; it.base = new T.Color(CATS[it.cat].hex); nodeMesh.setColorAt(i, it.base); });
+  nodeMesh.frustumCulled = false;
+  scene.add(nodeMesh);
+  const commitMesh = new T.InstancedMesh(sphere, new T.MeshLambertMaterial({ color: 0xffffff }), commits.length);
+  commits.forEach((c, i) => { c.i = i; commitMesh.setColorAt(i, COMMIT_C); });
+  commitMesh.frustumCulled = false;
+  scene.add(commitMesh);
+
+  /* glow: halos around nodes, and the moving packets */
+  const glowMats = [];
+  function glowPoints(n, core) {
+    const mat = new T.ShaderMaterial({
+      uniforms: { uScale: { value: 600 }, uNear: { value: 40 }, uFar: { value: 80 }, uCore: { value: core } },
+      vertexShader: [
+        "attribute vec3 aColor; attribute float aSize; attribute float aAlpha;",
+        "uniform float uScale; uniform float uNear; uniform float uFar;",
+        "varying vec3 vColor; varying float vAlpha;",
+        "void main() {",
+        "  vec4 mv = modelViewMatrix * vec4(position, 1.0);",
+        "  gl_Position = projectionMatrix * mv;",
+        "  float z = -mv.z;",
+        "  gl_PointSize = aSize * uScale / max(z, 0.1);",
+        "  vColor = aColor;",
+        "  vAlpha = aAlpha * mix(1.0, 0.35, smoothstep(uNear, uFar, z));",
+        "}"].join("\n"),
+      fragmentShader: [
+        "uniform float uCore;",
+        "varying vec3 vColor; varying float vAlpha;",
+        "void main() {",
+        "  float d = length(gl_PointCoord - 0.5) * 2.0;",
+        "  if (d > 1.0) discard;",
+        "  float glow = pow(1.0 - d, 2.4);",
+        "  float core = smoothstep(0.34, 0.0, d) * uCore;",
+        "  gl_FragColor = vec4(vColor * (1.0 + core * 0.8), (glow * 0.8 + core) * vAlpha);",
+        "}"].join("\n"),
+      transparent: true, depthWrite: false, blending: T.AdditiveBlending,
+    });
+    glowMats.push(mat);
+    const geo = new T.BufferGeometry();
+    const P = new Float32Array(n * 3), C = new Float32Array(n * 3), S = new Float32Array(n), A = new Float32Array(n);
+    const attrs = [["position", P, 3], ["aColor", C, 3], ["aSize", S, 1], ["aAlpha", A, 1]].map(([k, arr, size]) => {
+      const at = new T.BufferAttribute(arr, size);
+      at.setUsage(T.DynamicDrawUsage);
+      geo.setAttribute(k, at);
+      return at;
+    });
+    const pts = new T.Points(geo, mat);
+    pts.frustumCulled = false;
+    scene.add(pts);
+    return { geo, P, C, S, A, attrs, n };
+  }
+  const halos = glowPoints(items.length + commits.length, 0);
+  const MAXP = 800;
+  const pk = glowPoints(MAXP, 1);
+
+  /* a floor of dots */
+  {
+    const pos = [];
+    for (let x = -30; x <= 30; x += 1.4) for (let z = -16; z <= 16; z += 1.4) pos.push(x, Y_END - 1.4, z);
+    const geo = new T.BufferGeometry();
+    geo.setAttribute("position", new T.Float32BufferAttribute(pos, 3));
+    scene.add(new T.Points(geo, new T.PointsMaterial({ color: "#2a3a55", size: 0.09, sizeAttenuation: true, transparent: true, opacity: 0.9 })));
+  }
+
+  /* shock rings for the secret test */
+  const shocks = [0, 1].map(() => {
+    const m = new T.Mesh(new T.RingGeometry(0.86, 1, 56), new T.MeshBasicMaterial({ color: RED_HEX, transparent: true, opacity: 0, depthWrite: false, side: T.DoubleSide, blending: T.AdditiveBlending }));
+    m.visible = false;
+    scene.add(m);
+    return { m, t: -1 };
+  });
+
+  /* ------------------------------------------------------------------ labels */
+  const mk = (cls, html, hex) => {
+    const el = document.createElement("div");
+    el.className = "lbl " + cls;
+    if (hex) el.style.setProperty("--c", hex);
+    el.innerHTML = html;
+    labelsEl.appendChild(el);
+    return el;
+  };
+  const label = (el, extra) => Object.assign({ el, a: 0, aT: 0, x: 0, y: 0, w: 0, h: 0, sx: 0, sy: 0, front: true, vis: false, show: false, clk: false }, extra);
+  const nodeLabels = [];
+  for (const n of NODES) nodeLabels.push(label(mk("node", `<i></i>${esc(n.name)}`, CATS[n.cat].hex), { n, its: items.filter(it => it.node === n), sat: false }));
+  for (const s of sats) nodeLabels.push(label(mk("node sat", `<i></i>${esc(s.node.name)}`, CATS.method.hex), { n: s.node, its: [s], sat: true }));
+  const primary = e => e.its.find(i => i.g === "ours") || e.its[0];
+  nodeLabels.forEach(e => {
+    e.el.addEventListener("pointerenter", () => setHover(primary(e)));
+    e.el.addEventListener("pointerleave", () => setHover(null));
+    e.el.addEventListener("click", () => select(primary(e)));
+  });
+  const stageLabels = STAGES.map(st => label(mk("stg", `<b>${String(st.i + 1).padStart(2, "0")}</b><span>${esc(st.name)}</span>`), { st }));
+  const titles = [
+    label(mk("title", "Plain Claude Code<small>7 parts, as it ships</small>"), { g: "plain" }),
+    label(mk("title ours", "With the Nodaris harness<small>44 parts + 9 skills</small>"), { g: "ours" }),
+  ];
+  const arcTag = label(mk("tag", "lessons flow back", CATS.memory.hex), { pos: arcCurve.getPoint(0.5) });
+  const callouts = [];
+
+  function measure() {
+    for (const e of [...nodeLabels, ...stageLabels, ...titles, arcTag, ...callouts]) { e.w = e.el.offsetWidth; e.h = e.el.offsetHeight; }
+  }
+  const isHot = n => !!((hover && hover.node === n) || (selected && selected.node === n));
+  function wanted(e) {
+    if (isHot(e.n)) return true;
+    let b = 0;
+    for (const it of e.its) b = Math.max(b, it.bT);
+    if (e.sat) return focusCat === "method" && b > 0.6;
+    if (!wide) return !!(focusCat || mode !== "overview") && b > 0.6;
+    return b > 0.6;
+  }
+  const pv = new V3();
+  function project(p, o) {
+    pv.copy(p).project(camera);
+    o.sx = (pv.x + 1) * 0.5 * W;
+    o.sy = (1 - pv.y) * 0.5 * H;
+    o.front = pv.z < 1;
+  }
+
+  /* wide screens: engine names in a shared middle column, everything else in a column on the right */
+  function relax(list, top) {
+    list.sort((a, b) => a.ty - b.ty);
+    let prev = top - 3;
+    for (const e of list) { e.y = Math.max(e.ty - e.h / 2, prev + 3); prev = e.y + e.h; }
+    let lim = H - 8;
+    for (let i = list.length - 1; i >= 0; i--) { const e = list[i]; if (e.y + e.h > lim) e.y = lim - e.h; lim = e.y - 3; }
+  }
+  function layoutWide() {
+    const mid = [], right = [];
+    let plainMax = -1e9, oursMin = 1e9, rightMax = -1e9;
+    for (const it of items) {
+      if (!it.front) continue;
+      if (it.cat === "engine") {
+        if (it.sx < -40 || it.sx > W + 40) continue;
+        if (it.g === "plain") plainMax = Math.max(plainMax, it.sx); else oursMin = Math.min(oursMin, it.sx);
+      } else if (!it.sat || focusCat === "method") rightMax = Math.max(rightMax, it.sx);
+    }
+    for (const e of nodeLabels) {
+      if (!e.show) continue;
+      if (e.n.cat === "engine") {
+        let sum = 0, k = 0;
+        for (const it of e.its) if (it.front && it.sx > -40 && it.sx < W + 40) { sum += it.sy; k++; }
+        if (!k) { e.show = false; continue; }
+        e.ty = sum / k;
+        mid.push(e);
+      } else {
+        if (!e.its[0].front) { e.show = false; continue; }
+        e.ty = e.its[0].sy;
+        right.push(e);
+      }
+    }
+    const top = TOP - 12;
+    relax(mid, top);
+    const plainOn = plainMax > -1e8, oursOn = oursMin < 1e8;
+    for (const e of mid) {
+      if (plainOn && oursOn) e.x = (plainMax + oursMin) / 2 - e.w / 2;
+      else if (plainOn) e.x = plainMax + 28;
+      else e.x = oursMin - 28 - e.w;
+    }
+    /* keep the column clear of the harness title; stagger it into two when it cannot fit in one */
+    let colX = rightMax + 30;
+    const to = titles[1];
+    if (to.show) colX = Math.max(colX, to.x + to.w + 16);
+    right.sort((a, b) => a.ty - b.ty);
+    const need = right.reduce((s, e) => s + e.h + 3, -3);
+    if (need <= H - 8 - top) {
+      relax(right, top);
+      for (const e of right) e.x = colX;
+    } else {
+      const a = right.filter((_, i) => i % 2 === 0), b = right.filter((_, i) => i % 2 === 1);
+      relax(a, top);
+      relax(b, top);
+      const wA = a.reduce((m, e) => Math.max(m, e.w), 0);
+      for (const e of a) e.x = colX;
+      for (const e of b) e.x = colX + wA + 14;
+    }
+  }
+
+  /* narrow screens: names beside their dots, only for what is in focus */
+  function layoutNear() {
+    const placed = [];
+    const list = [];
+    for (const e of nodeLabels) {
+      if (!e.show) continue;
+      const on = e.its.filter(i => i.front && i.sx > 0 && i.sx < W);
+      e.anchor = on.find(i => i.g === "ours") || on[0];
+      if (e.anchor) list.push(e); else e.show = false;
+    }
+    list.sort((a, b) => (+isHot(b.n) - +isHot(a.n)) || (a.anchor.depth - b.anchor.depth));
+    for (const e of list) {
+      const a = e.anchor;
+      let x = a.sx + 11;
+      if (x + e.w > W - 6) x = a.sx - 11 - e.w;
+      const y = a.sy - e.h / 2;
+      const r = [x, y, x + e.w, y + e.h];
+      if (!isHot(e.n) && placed.some(p => r[0] < p[2] && r[2] > p[0] && r[1] < p[3] && r[3] > p[1])) { e.show = false; continue; }
+      placed.push(r);
+      e.x = x;
+      e.y = y;
+    }
+  }
+
+  function paint(e, k) {
+    e.aT = e.show ? 1 : 0;
+    e.a += (e.aT - e.a) * k;
+    if (e.a < 0.02 && !e.show) {
+      if (e.vis) { e.el.style.visibility = "hidden"; e.vis = false; }
+      return false;
+    }
+    if (!e.vis) { e.el.style.visibility = "visible"; e.vis = true; }
+    e.el.style.transform = `translate3d(${e.x.toFixed(1)}px,${e.y.toFixed(1)}px,0)`;
+    e.el.style.opacity = e.a.toFixed(3);
+    return true;
+  }
+
+  function updateLabels(dt) {
+    for (const it of items) { project(it.pos, it); it.depth = camera.position.distanceTo(it.pos); }
+    for (const c of commits) project(c.pos, c);
+    const k = reduceMotion ? 1 : 1 - Math.pow(0.0005, dt);
+    for (const t of titles) {
+      project(tmpV.set(GX[t.g], Y_TOP + 1.3, 0), t);
+      t.show = t.front && t.sx > -t.w && t.sx < W + t.w;
+      t.x = Math.max(8, Math.min(W - t.w - 8, t.sx - t.w / 2));
+      t.y = Math.max(TOP - 8, t.sy - t.h);
+    }
+    for (const e of nodeLabels) e.show = wanted(e);
+    if (wide) layoutWide(); else layoutNear();
+    for (const e of nodeLabels) {
+      const clk = paint(e, k) && wide && e.show;
+      if (clk !== e.clk) { e.el.classList.toggle("click", clk); e.clk = clk; }
+    }
+    const refG = view === "ours" ? "ours" : "plain";
+    for (const s of stageLabels) {
+      const c = commitAt[refG + ":" + s.st.id];
+      s.ref = c;
+      s.show = c.front && c.sy > TOP - 8 && c.sy < H - 30;
+      s.x = wide ? 18 : 10;
+      s.y = c.sy - s.h / 2;
+      paint(s, k);
+    }
+    for (const t of titles) paint(t, k);
+    project(arcTag.pos, arcTag);
+    arcTag.show = arcTag.front && arc.bT > 0.5 && focusCat === "memory";
+    arcTag.x = arcTag.sx + 12;
+    arcTag.y = arcTag.sy - arcTag.h / 2;
+    paint(arcTag, k);
+    for (const c of callouts) {
+      project(c.pos, c);
+      c.show = c.front;
+      c.x = c.sx + 18;
+      c.y = c.below ? c.sy + 16 : c.sy - c.h - 16;
+      if (c.x + c.w > W - 8) c.x = c.sx - 18 - c.w;
+      if (c.y < TOP - 8) c.y = c.sy + 16;
+      else if (c.y + c.h > H - 8) c.y = c.sy - c.h - 16;
+      paint(c, k);
+    }
+  }
+
+  const lctx = linesCv.getContext("2d");
+  function drawLines() {
+    lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    lctx.clearRect(0, 0, W, H);
+    if (wide) {
+      for (const e of nodeLabels) {
+        if (e.a < 0.03) continue;
+        const rgb = RGB[e.n.cat], hot = isHot(e.n), ly = e.y + e.h / 2;
+        for (const it of e.its) {
+          if (!it.front) continue;
+          const toRight = e.x > it.sx;
+          const lx = toRight ? e.x - 2 : e.x + e.w + 2;
+          const sx = it.sx + (toRight ? 7 : -7);
+          const mx = (sx + lx) / 2;
+          lctx.strokeStyle = rgba(rgb, (hot ? 0.9 : 0.34) * e.a * Math.max(0.25, it.b));
+          lctx.lineWidth = hot ? 1.5 : 1;
+          lctx.beginPath();
+          lctx.moveTo(sx, it.sy);
+          lctx.bezierCurveTo(mx, it.sy, mx, ly, lx, ly);
+          lctx.stroke();
+        }
+      }
+      if (view !== "ours") {
+        lctx.setLineDash([2, 4]);
+        lctx.strokeStyle = "rgba(98,114,138,.38)";
+        lctx.lineWidth = 1;
+        for (const s of stageLabels) {
+          if (s.a < 0.05 || !s.ref) continue;
+          lctx.beginPath();
+          lctx.moveTo(s.x + s.w + 8, s.y + s.h / 2);
+          lctx.lineTo(s.ref.sx - 10, s.ref.sy);
+          lctx.stroke();
+        }
+        lctx.setLineDash([]);
+      }
+    }
+    for (const c of callouts) {
+      if (c.a < 0.05) continue;
+      const bx = c.x < c.sx ? c.x + c.w : c.x, by = c.y < c.sy ? c.y + c.h : c.y;
+      lctx.globalAlpha = c.a;
+      lctx.strokeStyle = c.hex;
+      lctx.lineWidth = 1.2;
+      lctx.beginPath();
+      lctx.moveTo(c.sx, c.sy);
+      lctx.lineTo(bx, by);
+      lctx.stroke();
+      lctx.globalAlpha = 1;
+    }
+  }
+
+  /* ------------------------------------------------------------------ state */
+  let W = 1, H = 1, dpr = 1, wide = true, TOP = 66;
+  const barEl = $("#stage .bar");
+  let mode = "overview", view = "both", walkStep = 0, focusCat = null, selected = null, hover = null;
+  let paused = reduceMotion, userZoom = 1, secretState = null;
+  let running = false, last = 0, onScreen = true, dirty = true, settle = 0;
+  let lastInteract = performance.now(), swayT = 0, drag = null, engaged = false, ovTimer = 0.5, wkTimer = 0;
+  const cam = { az: 0, el: 0.1, dist: 60, target: new V3(), azGoal: 0, elGoal: 0.1, distGoal: 60, tGoal: new V3(), azRest: 0 };
+  const packets = [], timers = [];
+  const tmpV = new V3(), tmpC = new T.Color(), dummy = new T.Object3D();
+  const modesEl = $("#modes"), viewsEl = $("#views"), pauseBtn = $("#pause");
+
+  /* ------------------------------------------------------------------ focus */
+  function bFor(cat, stage, node) {
+    if (node && selected && selected.node === node) return 1;
+    let b = 1;
+    if (focusCat && cat !== focusCat) b = 0.13;
+    if (mode === "walk" && stage !== STAGES[walkStep].id) b = Math.min(b, 0.18);
+    if (mode === "secret" && stage !== "tool") b = Math.min(b, 0.45);
+    return b;
+  }
+  function applyFocus() {
+    for (const it of items) it.bT = bFor(it.cat, it.stage, it.node);
+    for (const g of groups) g.bT = bFor(g.cat, g.stage, null);
+    for (const c of commits) c.bT = mode === "walk" && c.stage !== STAGES[walkStep].id ? 0.4 : 1;
+    arc.bT = focusCat && focusCat !== "memory" ? 0.13 : mode === "walk" ? 0.25 : mode === "secret" ? 0.3 : 1;
+    stageLabels.forEach(s => s.el.classList.toggle("on", mode === "walk" && s.st.i === walkStep));
+    nodeLabels.forEach(e => e.el.classList.toggle("hot", isHot(e.n)));
+    dirty = true;
+  }
+
+  /* ------------------------------------------------------------------ camera */
+  function camGoal() {
+    const tanH = Math.tan(camera.fov / 2 * DEG);
+    const topPad = TOP, botPad = 28, availH = Math.max(120, H - topPad - botPad);
+    let halfH = 14.9, cy = 0.1;
+    if (mode === "walk") { halfH = 3.9; cy = STAGES[walkStep].y - 1.6; }
+    let x0, x1, leftPx, rightPx;
+    if (view === "plain") { x0 = GX.plain - 0.4; x1 = GX.plain + R + 0.4; leftPx = wide ? 200 : 40; rightPx = wide ? 190 : 24; }
+    else if (view === "ours") { x0 = GX.ours - R - 0.4; x1 = GX.ours + R + 0.8; leftPx = wide ? 190 : 24; rightPx = wide ? 250 : 24; }
+    else { x0 = GX.plain - 0.4; x1 = GX.ours + R + 0.8; leftPx = wide ? 200 : 30; rightPx = wide ? 250 : 20; }
+    if (wide && !card.hidden) rightPx += 372;
+    const worldW = x1 - x0;
+    let s = availH / (2 * halfH);
+    const maxS = (W - leftPx - rightPx - 24) / worldW;
+    if (s > maxS) s = Math.max(4, maxS);
+    const pad = Math.max(8, (W - (leftPx + worldW * s + rightPx)) / 2);
+    cam.tGoal.set(x0 + (W / 2 - (pad + leftPx)) / s, cy + (topPad - botPad) / (2 * s), 0);
+    cam.distGoal = H / (2 * s * tanH) * userZoom;
+  }
+  function updateCamera(dt) {
+    if (!paused && !reduceMotion && !drag && mode === "overview" && performance.now() - lastInteract > 4500) {
+      swayT += dt;
+      cam.azGoal = cam.azRest + 0.2 * Math.sin(swayT * 0.22);
+    }
+    const k = reduceMotion ? 1 : 1 - Math.pow(0.012, dt);
+    cam.az += (cam.azGoal - cam.az) * k;
+    cam.el += (cam.elGoal - cam.el) * k;
+    cam.dist += (cam.distGoal - cam.dist) * k;
+    cam.target.lerp(cam.tGoal, k);
+    const ce = Math.cos(cam.el);
+    camera.position.set(cam.target.x + cam.dist * Math.sin(cam.az) * ce, cam.target.y + cam.dist * Math.sin(cam.el), cam.target.z + cam.dist * Math.cos(cam.az) * ce);
+    camera.lookAt(cam.target);
+    camera.updateMatrixWorld();
+    scene.fog.near = cam.dist - 6;
+    scene.fog.far = cam.dist + 34;
+    for (const m of glowMats) { m.uniforms.uNear.value = cam.dist - 6; m.uniforms.uFar.value = cam.dist + 34; }
+    return Math.abs(cam.azGoal - cam.az) + Math.abs(cam.elGoal - cam.el) + Math.abs(cam.distGoal - cam.dist) * 0.01 + cam.target.distanceTo(cam.tGoal) > 0.0005;
+  }
+
+  /* ------------------------------------------------------------------ packets */
+  function addPacket(route, dur, hex, o = {}) {
+    const p = { route, s: 0, speed: route.len / Math.max(0.05, dur), color: new T.Color(hex), size: o.size || 0.55, alpha: o.alpha == null ? 1 : o.alpha,
+                evts: (o.evts || []).slice().sort((a, b) => a.s - b.s), ei: 0, onEnd: o.onEnd, trail: o.trail == null ? 5 : o.trail, alive: true };
+    packets.push(p);
+    return p;
+  }
+  function updatePackets(tm) {
+    for (const p of packets) {
+      if (!p.alive) continue;
+      p.s += p.speed * tm;
+      while (p.alive && p.ei < p.evts.length && p.evts[p.ei].s <= p.s) p.evts[p.ei++].fn(p);
+      if (p.alive && p.s >= p.route.len) { p.alive = false; if (p.onEnd) p.onEnd(p); }
+    }
+    for (let i = packets.length - 1; i >= 0; i--) if (!packets[i].alive) packets.splice(i, 1);
+    let n = 0;
+    for (const p of packets) {
+      for (let k = 0; k <= p.trail && n < MAXP; k++) {
+        const s = Math.min(p.s, p.route.len) - k * 0.17;
+        if (s < 0) break;
+        p.route.at(s, tmpV);
+        pk.P[n * 3] = tmpV.x; pk.P[n * 3 + 1] = tmpV.y; pk.P[n * 3 + 2] = tmpV.z;
+        pk.C[n * 3] = p.color.r; pk.C[n * 3 + 1] = p.color.g; pk.C[n * 3 + 2] = p.color.b;
+        const f = 1 - k / (p.trail + 1.5);
+        pk.S[n] = p.size * (k ? 0.75 * f : 1);
+        pk.A[n] = p.alpha * (k ? 0.5 * f : 1);
+        n++;
+      }
+    }
+    pk.geo.setDrawRange(0, n);
+    pk.attrs.forEach(a => { a.needsUpdate = true; });
+  }
+  const pulse = it => { it.pulse = 1; };
+  const pulseCommit = (g, id) => { const c = commitAt[g + ":" + id]; if (c) c.pulse = 1; };
+  const trunkRoute = (g, y0, y1) => new Route([new V3(GX[g], y0, 0), new V3(GX[g], y1, 0)]);
+  function launchSegment(g, y0, y1, o = {}) {
+    const evts = [];
+    for (const st of STAGES) {
+      if (st.y <= y0 + 1e-6 && st.y > y1 + 1e-6) evts.push({ s: y0 - st.y, fn: () => { pulseCommit(g, st.id); spawnBranches(g, st.id); } });
+    }
+    return addPacket(trunkRoute(g, y0, y1), (y0 - y1) / SP * STAGE_T, o.hex || PACKET, { evts, size: 0.62, trail: 6,
+      onEnd: () => { if (Math.abs(y1 - Y_END) < 1e-6) pulseCommit(g, "end"); if (o.onEnd) o.onEnd(); } });
+  }
+  function spawnBranches(g, stageId) {
+    for (const grp of groupsAt[g][stageId] || []) {
+      const evts = grp.items.map(it => ({ s: it.s, fn: () => {
+        pulse(it);
+        if (it.node.hub) sats.forEach(pulse);
+        if (it === libIt) addPacket(arcRoute, 3.6, CATS.memory.hex, { size: 0.5, trail: 7, alpha: Math.max(0.2, arc.bT), onEnd: () => pulse(recIt) });
+      } }));
+      addPacket(grp.route, STAGE_T, CATS[grp.cat].hex, { evts, size: 0.44, trail: 4, alpha: Math.max(0.15, grp.bT) });
+    }
+  }
+  const later = (t, fn) => timers.push({ t, fn });
+  function runTimers(tm) {
+    for (let i = timers.length - 1; i >= 0; i--) {
+      timers[i].t -= tm;
+      if (timers[i].t <= 0) { const f = timers[i].fn; timers.splice(i, 1); f(); }
+    }
+  }
+
+  /* ------------------------------------------------------------------ the secret test */
+  const PLAIN_NOTE = "The key's value is now in the conversation and is sent with every later request.";
+  const OURS_NOTE = "The secret guard blocked the read. The task carries on without the key.";
+  const guardIt = () => groupsAt.ours.tool.find(x => x.cat === "guards").items[0];
+  function shock(pos, hex) {
+    const s = shocks.find(x => x.t < 0) || shocks[0];
+    s.t = 0;
+    s.m.position.copy(pos);
+    s.m.material.color.set(hex);
+    s.m.visible = true;
+  }
+  function addCallout(pos, title, text, hex, below) {
+    const c = label(mk("callout", `<strong>${esc(title)}</strong>${esc(text)}`, hex), { pos: pos.clone(), hex, below: !!below });
+    c.w = c.el.offsetWidth;
+    c.h = c.el.offsetHeight;
+    callouts.push(c);
+  }
+  function clearAnim() {
+    packets.length = 0;
+    timers.length = 0;
+    callouts.forEach(c => c.el.remove());
+    callouts.length = 0;
+    items.forEach(i => { i.flash = 0; });
+    commits.forEach(c => { c.flash = 0; });
+    shocks.forEach(s => { s.t = -1; s.m.visible = false; });
+    secretState = null;
+  }
+  function startSecret() {
+    clearAnim();
+    secretState = { done: false, still: paused };
+    if (paused) {
+      const c = commitAt["plain:result"], guard = guardIt();
+      c.flash = 1;
+      guard.flash = 1;
+      addCallout(c.pos, "Ran without asking", PLAIN_NOTE, RED_HEX, true);
+      addCallout(guard.pos, "Refused before it ran", OURS_NOTE, AMBER_HEX);
+      secretState.done = true;
+    } else {
+      for (const g of ["plain", "ours"]) {
+        addPacket(trunkRoute(g, Y_TOP, STAGE.tool.y), (Y_TOP - STAGE.tool.y) / SP * 1.05, RED_HEX, { size: 0.72, trail: 8, onEnd: () => secretAtTool(g) });
+      }
+    }
+    renderConsole();
+    dirty = true;
+  }
+  function secretAtTool(g) {
+    pulseCommit(g, "tool");
+    if (g === "plain") {
+      const grp = groupsAt.plain.tool[0];
+      addPacket(grp.route, 1.7, RED_HEX, { size: 0.62, trail: 8, evts: grp.items.map(it => ({ s: it.s, fn: () => pulse(it) })), onEnd: () => {
+        const c = commitAt["plain:result"];
+        pulseCommit("plain", "result");
+        c.flash = 1;
+        shock(c.pos, RED_HEX);
+        addCallout(c.pos, "Ran without asking", PLAIN_NOTE, RED_HEX, true);
+        addPacket(trunkRoute("plain", STAGE.result.y, Y_END), 3.6, RED_HEX, { size: 0.6, trail: 12, onEnd: () => {
+          if (secretState) { secretState.done = true; renderConsole(); }
+        } });
+      } });
+    } else {
+      const guard = guardIt();
+      addPacket(guard.group.route, 1.7, RED_HEX, { size: 0.62, trail: 8, evts: [{ s: guard.s, fn: p => {
+        p.alive = false;
+        guard.flash = 1;
+        pulse(guard);
+        shock(guard.pos, AMBER_HEX);
+        addCallout(guard.pos, "Refused before it ran", OURS_NOTE, AMBER_HEX);
+        later(0.9, () => launchSegment("ours", STAGE.tool.y - 0.001, Y_END));
+      } }] });
+    }
+  }
+
+  /* ------------------------------------------------------------------ console, card, controls */
+  function renderConsole() {
+    const k = $("#kicker"), t = $("#conTitle"), p = $("#colPlain"), o = $("#colOurs"), nav = $("#conNav");
+    if (mode === "walk") {
+      const st = STAGES[walkStep];
+      k.textContent = `Step ${walkStep + 1} of ${STAGES.length}`;
+      t.textContent = st.name;
+      p.textContent = st.plain;
+      o.textContent = st.ours;
+      nav.innerHTML = `<button type="button" class="pill" data-go="-1"${walkStep === 0 ? " disabled" : ""}>Back</button>` +
+        `<div class="dots">${STAGES.map((s, i) => `<button type="button" data-step="${i}" aria-label="Step ${i + 1}: ${esc(s.name)}"${i === walkStep ? ' aria-current="step"' : ""}></button>`).join("")}</div>` +
+        `<button type="button" class="pill primary" data-go="1"${walkStep === STAGES.length - 1 ? " disabled" : ""}>Next</button>`;
+    } else if (mode === "secret") {
+      k.textContent = "Replay";
+      t.textContent = "What happens when Claude tries to read the project’s .env file?";
+      p.textContent = "File reads inside a project need no approval, so the read runs. The key’s value is now in the conversation, in the saved transcript and in every later request to the model provider.";
+      o.textContent = "The secret guard checks every tool call before it runs. It refuses this read and tells Claude why, and the task carries on without the key.";
+      nav.innerHTML = `<button type="button" class="pill${secretState && secretState.done ? " primary" : ""}" data-replay>Replay</button>`;
+    } else if (focusCat) {
+      const c = CATS[focusCat];
+      k.textContent = c.name;
+      t.textContent = c.blurb;
+      p.textContent = CAT_TEXT[focusCat].plain;
+      o.textContent = CAT_TEXT[focusCat].ours;
+      nav.innerHTML = `<button type="button" class="pill" data-clear>Show everything</button>`;
+    } else {
+      k.textContent = "Overview";
+      t.textContent = "One task flows from top to bottom on both sides.";
+      p.textContent = "Seven built-in parts join in along the way: CLAUDE.md, auto memory, the bundled skills and agents, the tools, the permission prompt and auto-compaction.";
+      o.textContent = "The same seven, plus 37 more on five extra branches: the pipeline every change goes through, guards, memory, method and reach. The teal arc carries lessons from the end of one session back to the next. " + (coarse ? "Tap a dot for details." : "Click a dot or a name for details.");
+      nav.innerHTML = `<button type="button" class="pill primary" data-walk>Walk through a task</button>`;
+    }
+  }
+  function openCard(it) {
+    const n = it.node, c = CATS[n.cat], st = STAGE[n.stage];
+    let rows;
+    if (n.sat) rows = [["What it does", n.what], ["When it loads", "Only when the task calls for it. Until then, just its one-line description is in the context."]];
+    else if (n.cat === "engine") rows = [["What it is", n.what], ["On plain Claude Code", n.plain], ["With the harness", n.ours]];
+    else rows = [["What it does", n.what], ["What it buys", n.buys], ["What it costs", n.costs], ["Plain Claude Code instead", n.plain]];
+    const where = n.sat ? "pack" : n.where;
+    card.innerHTML = `<div class="card-top"><span class="ctag" style="--c:${c.hex}">${n.sat ? "Method · skill" : c.name}</span><span class="where w-${where}">${esc(WHERE[where])}</span><button type="button" class="x" aria-label="Close details">×</button></div>` +
+      `<h3>${esc(n.name)}</h3><p class="when">Step ${String(st.i + 1).padStart(2, "0")} · ${esc(st.name)}</p>` +
+      `<dl>${rows.map(([key, v]) => `<dt>${key}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`;
+    card.hidden = false;
+    card.querySelector(".x").addEventListener("click", () => select(null));
+  }
+  function setHover(it) {
+    if (hover === it) return;
+    hover = it;
+    canvas.classList.toggle("point", !!it);
+    nodeLabels.forEach(e => e.el.classList.toggle("hot", isHot(e.n)));
+    dirty = true;
+  }
+  function select(it) {
+    selected = it || null;
+    if (it && it.node.hub && focusCat !== "method") { focusCat = "method"; syncChips(); renderConsole(); }
+    if (it) openCard(it); else card.hidden = true;
+    applyFocus();
+    camGoal();
+  }
+  function syncChips() {
+    document.querySelectorAll("#chips .chip").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.cat === focusCat)));
+    $("#chips").classList.toggle("has-focus", !!focusCat);
+  }
+  function syncPause() {
+    pauseBtn.textContent = paused ? "Play motion" : "Pause motion";
+    pauseBtn.setAttribute("aria-pressed", String(paused));
+  }
+  function setMode(m) {
+    mode = m;
+    modesEl.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === m)));
+    clearAnim();
+    cam.azGoal = 0; cam.azRest = 0; cam.elGoal = 0.1; swayT = 0; userZoom = 1;
+    if (m === "secret" && focusCat) { focusCat = null; syncChips(); }
+    ovTimer = 0.4;
+    wkTimer = 0.3;
+    applyFocus();
+    camGoal();
+    renderConsole();
+    if (m === "secret") startSecret();
+    lastInteract = performance.now();
+    dirty = true;
+  }
+  function setView(v) {
+    view = v;
+    userZoom = 1;
+    viewsEl.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.view === v)));
+    camGoal();
+    dirty = true;
+  }
+  function goStep(i) {
+    walkStep = Math.max(0, Math.min(STAGES.length - 1, i));
+    clearAnim();
+    wkTimer = 0.25;
+    applyFocus();
+    camGoal();
+    renderConsole();
+    dirty = true;
+  }
+  function pickAt(mx, my) {
+    const ppu = H / (2 * Math.tan(camera.fov / 2 * DEG));
+    let best = null, bestScore = 1e9;
+    for (const it of items) {
+      if (!it.front) continue;
+      if (it.bT < 0.3 && !(selected && selected.node === it.node)) continue;
+      const d = Math.hypot(it.sx - mx, it.sy - my) - it.r * ppu / it.depth;
+      if (d > 12) continue;
+      const score = d + it.depth * 0.04;
+      if (score < bestScore) { bestScore = score; best = it; }
+    }
+    return best;
+  }
+
+  modesEl.addEventListener("click", e => { const b = e.target.closest("button[data-mode]"); if (b) setMode(b.dataset.mode); });
+  viewsEl.addEventListener("click", e => { const b = e.target.closest("button[data-view]"); if (b) setView(b.dataset.view); });
+  $("#zin").addEventListener("click", () => { userZoom = Math.max(0.35, userZoom / 1.2); camGoal(); dirty = true; });
+  $("#zout").addEventListener("click", () => { userZoom = Math.min(1.9, userZoom * 1.2); camGoal(); dirty = true; });
+  pauseBtn.addEventListener("click", () => {
+    paused = !paused;
+    syncPause();
+    if (!paused && mode === "secret" && secretState && secretState.still) startSecret();
+    lastInteract = performance.now();
+    dirty = true;
+  });
+  $("#conNav").addEventListener("click", e => {
+    const b = e.target.closest("button");
+    if (!b || b.disabled) return;
+    if (b.dataset.go) goStep(walkStep + Number(b.dataset.go));
+    else if (b.dataset.step) goStep(Number(b.dataset.step));
+    else if ("replay" in b.dataset) { if (mode === "secret") startSecret(); }
+    else if ("clear" in b.dataset) { focusCat = null; syncChips(); applyFocus(); renderConsole(); camGoal(); }
+    else if ("walk" in b.dataset) setMode("walk");
+  });
+  canvas.addEventListener("pointerdown", e => {
+    if (e.button !== 0) return;
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, az: cam.azGoal, el: cam.elGoal, moved: false };
+    engaged = true;
+    lastInteract = performance.now();
+    dirty = true;
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* capture is optional */ }
+  });
+  canvas.addEventListener("pointermove", e => {
+    if (drag && e.pointerId === drag.id) {
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (!drag.moved && Math.abs(dx) + Math.abs(dy) > 5) { drag.moved = true; canvas.classList.add("drag"); setHover(null); }
+      if (drag.moved) {
+        cam.azGoal = drag.az - dx * 0.0065;
+        cam.elGoal = Math.max(-0.3, Math.min(0.95, drag.el + dy * 0.0045));
+        cam.azRest = cam.azGoal;
+        swayT = 0;
+        lastInteract = performance.now();
+        dirty = true;
+      }
+      return;
+    }
+    if (e.pointerType !== "touch") {
+      const r = canvas.getBoundingClientRect();
+      setHover(pickAt(e.clientX - r.left, e.clientY - r.top));
+    }
+  });
+  const endDrag = e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const click = !drag.moved && e.type === "pointerup";
+    drag = null;
+    canvas.classList.remove("drag");
+    if (click) { const r = canvas.getBoundingClientRect(); select(pickAt(e.clientX - r.left, e.clientY - r.top)); }
+    lastInteract = performance.now();
+    dirty = true;
+  };
+  canvas.addEventListener("pointerup", endDrag);
+  canvas.addEventListener("pointercancel", endDrag);
+  canvas.addEventListener("pointerleave", () => { if (!drag) setHover(null); });
+  vp.addEventListener("pointerleave", () => { engaged = false; });
+  canvas.addEventListener("wheel", e => {
+    if (!engaged && !e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    userZoom = Math.max(0.35, Math.min(1.9, userZoom * Math.exp(e.deltaY * 0.0012)));
+    camGoal();
+    lastInteract = performance.now();
+    dirty = true;
+  }, { passive: false });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && selected) { select(null); return; }
+    if (mode !== "walk" || (e.key !== "ArrowRight" && e.key !== "ArrowLeft")) return;
+    if (e.target.closest && e.target.closest("input, textarea, select, [contenteditable]")) return;
+    const r = vp.getBoundingClientRect();
+    if (r.bottom < 0 || r.top > innerHeight) return;
+    e.preventDefault();
+    goStep(walkStep + (e.key === "ArrowRight" ? 1 : -1));
+  });
+
+  api.focusCat = cat => {
+    if (mode === "secret") setMode("overview");
+    focusCat = focusCat === cat ? null : cat;
+    if (selected && focusCat && selected.cat !== focusCat) { selected = null; card.hidden = true; }
+    syncChips();
+    applyFocus();
+    renderConsole();
+    camGoal();
+  };
+  api.showNode = id => {
+    const it = items.find(i => i.node.id === id && i.g === "ours") || items.find(i => i.node.id === id);
+    if (!it) return;
+    if (mode !== "overview") setMode("overview");
+    if (focusCat && focusCat !== it.cat) { focusCat = null; syncChips(); renderConsole(); }
+    select(it);
+    $("#stage").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
+  };
+  api.ready = true;
+
+  /* ------------------------------------------------------------------ frame loop */
+  function updateNodes(dt, tm) {
+    const kb = reduceMotion ? 1 : 1 - Math.pow(0.004, dt);
+    let j = 0;
+    for (const it of items) {
+      it.b += (it.bT - it.b) * kb;
+      it.pulse = Math.max(0, it.pulse - tm * 1.5);
+      it.flash = Math.max(0, it.flash - tm * 0.3);
+      const hot = isHot(it.node);
+      dummy.position.copy(it.pos);
+      dummy.scale.setScalar(it.r * (1 + 0.55 * it.pulse) * (hot ? 1.35 : 1));
+      dummy.updateMatrix();
+      nodeMesh.setMatrixAt(it.i, dummy.matrix);
+      tmpC.copy(it.base).lerp(GROUND, (1 - it.b) * 0.82);
+      if (it.flash > 0) tmpC.lerp(RED, Math.min(1, it.flash * 1.3));
+      nodeMesh.setColorAt(it.i, tmpC);
+      halos.P[j * 3] = it.pos.x; halos.P[j * 3 + 1] = it.pos.y; halos.P[j * 3 + 2] = it.pos.z;
+      halos.C[j * 3] = tmpC.r; halos.C[j * 3 + 1] = tmpC.g; halos.C[j * 3 + 2] = tmpC.b;
+      halos.S[j] = (it.sat ? 0.7 : 1.6) * (1 + 1.1 * it.pulse + (hot ? 0.4 : 0));
+      halos.A[j] = (0.22 + 0.85 * it.pulse + (hot ? 0.4 : 0) + it.flash) * it.b;
+      j++;
+    }
+    for (const c of commits) {
+      c.b += (c.bT - c.b) * kb;
+      c.pulse = Math.max(0, c.pulse - tm * 1.5);
+      c.flash = Math.max(0, c.flash - tm * 0.3);
+      dummy.position.copy(c.pos);
+      dummy.scale.setScalar(c.r * (1 + 0.5 * c.pulse));
+      dummy.updateMatrix();
+      commitMesh.setMatrixAt(c.i, dummy.matrix);
+      tmpC.copy(COMMIT_C).lerp(GROUND, (1 - c.b) * 0.7);
+      if (c.flash > 0) tmpC.lerp(RED, Math.min(1, c.flash * 1.3));
+      commitMesh.setColorAt(c.i, tmpC);
+      halos.P[j * 3] = c.pos.x; halos.P[j * 3 + 1] = c.pos.y; halos.P[j * 3 + 2] = c.pos.z;
+      halos.C[j * 3] = tmpC.r; halos.C[j * 3 + 1] = tmpC.g; halos.C[j * 3 + 2] = tmpC.b;
+      halos.S[j] = 1.4 * (1 + 1.2 * c.pulse);
+      halos.A[j] = (0.14 + 0.8 * c.pulse + c.flash) * c.b;
+      j++;
+    }
+    nodeMesh.instanceMatrix.needsUpdate = true;
+    nodeMesh.instanceColor.needsUpdate = true;
+    commitMesh.instanceMatrix.needsUpdate = true;
+    commitMesh.instanceColor.needsUpdate = true;
+    halos.attrs.forEach(a => { a.needsUpdate = true; });
+    for (const g of groups) { g.b += (g.bT - g.b) * kb; g.mat.opacity = 0.08 + 0.84 * g.b; }
+    arc.b += (arc.bT - arc.b) * kb;
+    arc.mat.opacity = 0.42 * arc.b;
+    ringLine.material.opacity = 0.35 * hub.group.b;
+    for (const s of shocks) {
+      if (s.t < 0) continue;
+      s.t += tm;
+      if (s.t > 1.1) { s.t = -1; s.m.visible = false; continue; }
+      s.m.scale.setScalar(0.4 + s.t * 3.4);
+      s.m.material.opacity = Math.max(0, 1 - s.t / 1.1);
+      s.m.quaternion.copy(camera.quaternion);
+    }
+  }
+  function step(dt) {
+    const tm = paused ? 0 : dt;
+    runTimers(tm);
+    if (!paused && mode === "overview") {
+      ovTimer -= tm;
+      if (ovTimer <= 0) { ovTimer = 6.4; launchSegment("plain", Y_TOP, Y_END); launchSegment("ours", Y_TOP, Y_END); }
+    } else if (!paused && mode === "walk") {
+      wkTimer -= tm;
+      if (wkTimer <= 0) {
+        wkTimer = STAGE_T + 1.3;
+        const st = STAGES[walkStep];
+        for (const g of ["plain", "ours"]) launchSegment(g, st.y + 1.2, st.i === STAGES.length - 1 ? Y_END : st.y - SP);
+      }
+    }
+    updatePackets(tm);
+    ringAngle += tm * 0.35;
+    placeSats();
+    if (updateCamera(dt)) settle = Math.max(settle, 2);
+    updateNodes(dt, tm);
+    renderer.render(scene, camera);
+    updateLabels(dt);
+    drawLines();
+  }
+  function frame(now) {
+    if (!running) return;
+    const dt = Math.min(0.1, Math.max(0, (now - last) / 1000));
+    last = now;
+    if (dirty) { settle = 90; dirty = false; }
+    if (!paused || settle > 0 || drag) { settle--; step(dt); }
+    requestAnimationFrame(frame);
+  }
+  function start() {
+    if (running || document.hidden || !onScreen) return;
+    running = true;
+    last = performance.now();
+    requestAnimationFrame(frame);
+  }
+  function resize(first) {
+    W = Math.max(1, vp.clientWidth);
+    H = Math.max(1, vp.clientHeight);
+    wide = W >= 860;
+    TOP = barEl ? barEl.offsetHeight + 30 : 40;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    renderer.setPixelRatio(dpr);
+    renderer.setSize(W, H, false);
+    camera.aspect = W / H;
+    camera.updateProjectionMatrix();
+    linesCv.width = Math.round(W * dpr);
+    linesCv.height = Math.round(H * dpr);
+    const u = H * dpr / (2 * Math.tan(camera.fov / 2 * DEG));
+    for (const m of glowMats) m.uniforms.uScale.value = u;
+    stageLabels.forEach(s => s.el.classList.toggle("short", !wide));
+    measure();
+    camGoal();
+    if (first) {
+      cam.target.copy(cam.tGoal);
+      if (reduceMotion) { cam.az = cam.azGoal; cam.el = cam.elGoal; cam.dist = cam.distGoal; }
+      else { cam.az = -0.6; cam.el = 0.28; cam.dist = cam.distGoal * 1.45; }
+    }
+    dirty = true;
+  }
+
+  $("#hint").textContent = coarse ? "Swipe sideways to turn · tap a dot" : "Drag to turn · click a dot or a name";
+  syncPause();
+  applyFocus();
+  renderConsole();
+  resize(true);
+  step(0.016);
+  if ("ResizeObserver" in window) new ResizeObserver(() => resize(false)).observe(vp);
+  else addEventListener("resize", () => resize(false));
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { measure(); dirty = true; });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) running = false; else { dirty = true; start(); } });
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver(es => { onScreen = es[0].isIntersecting; if (onScreen) { dirty = true; start(); } else running = false; }, { rootMargin: "160px" }).observe(vp);
+  }
+  start();
+  return true;
+}
+
+init3D();
+})();
+</script>
+
+<style>
+.v3{padding-block:28px}
+.v3 .sec-h{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:10px}
+.v3 h2{margin:0;font-size:clamp(20px,2.6vw,28px);letter-spacing:-.01em}
+.v3-tabs{display:flex;gap:6px;flex-wrap:wrap}
+.v3-tabs button{font:500 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);background:var(--panel);border:1px solid var(--line-2);padding:7px 11px;border-radius:4px;cursor:pointer}
+.v3-tabs button[aria-pressed="true"]{color:var(--c-memory);border-color:var(--c-memory)}
+.v3-tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.v3-stage{position:relative;margin-top:14px;height:clamp(360px,56vw,560px);border:1px solid var(--line);border-radius:6px;background:radial-gradient(120% 90% at 50% 40%,#101a2b 0,var(--ground) 70%);overflow:hidden;touch-action:pan-y}
+.v3-stage canvas{display:block;width:100%;height:100%;cursor:grab}
+.v3-key{position:absolute;left:12px;bottom:12px;display:flex;flex-wrap:wrap;gap:6px;pointer-events:none}
+.v3-key span{display:flex;align-items:center;gap:6px;font:500 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:rgba(13,19,32,.85);border:1px solid var(--line);padding:5px 8px;border-radius:3px}
+.v3-key i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.k-built{background:#3dd6c0}.k-partial{background:linear-gradient(90deg,#f0b429 50%,transparent 50%);border:1px solid #f0b429}
+.k-gap{border:1.5px dashed #ff6b6b}.k-phi{background:#f472b6}.k-stop{background:#ff6b6b}.k-wait{background:#f0b429}.k-data{background:#a78bfa}
+.v3-tip{position:absolute;pointer-events:none;font:12px var(--font);color:var(--ink);background:var(--panel-2);border:1px solid var(--line-2);padding:6px 9px;border-radius:4px;max-width:240px;opacity:0;transition:opacity .12s}
+.v3-tip b{display:block;font:500 11px var(--mono);letter-spacing:.07em;text-transform:uppercase;margin-bottom:2px}
+.v3-nums{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.v3-nums span{font:11px var(--mono);color:var(--muted);border:1px solid var(--line);padding:5px 9px;border-radius:3px;font-variant-numeric:tabular-nums}
+.v3-nums b{color:var(--ink);font-weight:500;margin-right:5px}
+</style>
+<section class="wrap sec v3" id="v3" aria-label="Harness v3 engine and road to the Nodaris model">
+  <div class="sec-h">
+    <h2>v3: one engine, every agent</h2>
+    <div class="v3-tabs" role="group" aria-label="View">
+      <button id="v3-flow" aria-pressed="true">Flow</button>
+      <button id="v3-road" aria-pressed="false">Road</button>
+    </div>
+  </div>
+  <div class="v3-stage" id="v3-stage">
+    <div class="v3-key" id="v3-key">
+      <span><i class="k-built"></i>built</span><span><i class="k-partial"></i>partial</span><span><i class="k-gap"></i>gap</span>
+      <span><i class="k-phi"></i>PHI</span><span><i class="k-wait"></i>approval</span><span><i class="k-stop"></i>refused</span><span><i class="k-data"></i>data</span>
+    </div>
+    <div class="v3-tip" id="v3-tip" role="status"></div>
+  </div>
+  <div class="v3-nums">
+    <span><b>5</b>agents</span><span><b>96</b>engine tests</span><span><b>26,264</b>real commands replayed</span>
+    <span><b>6</b>refused classes</span><span><b>9</b>approval classes</span><span><b>1</b>live session verified</span>
+  </div>
+</section>
+<script>
+(() => {
+'use strict';
+const stage = document.getElementById('v3-stage');
+const anchor = document.querySelector('section[aria-label="Interactive comparison"]');
+if (anchor) anchor.after(document.getElementById('v3'));
+if (!window.THREE) { stage.style.display = 'none'; return; }
+const reduce = (() => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } })();
+const COL = { built: 0x3dd6c0, partial: 0xf0b429, gap: 0xff6b6b, phi: 0xf472b6, data: 0xa78bfa, line: 0x29384f, host: 0x79a8ff };
+
+// id, label, x, y, status, shape, tip
+const NODES = [
+  ['claude', 'Claude', -13, 3, 'built', 'host', 'Claude Code: live session verified'],
+  ['codex', 'Codex', -13, 1.8, 'partial', 'host', 'Codex: contract-tested'],
+  ['gemini', 'Gemini', -13, 0.6, 'partial', 'host', 'Gemini CLI: contract-tested'],
+  ['cursor', 'Cursor', -13, -0.6, 'partial', 'host', 'Cursor: contract-tested'],
+  ['opencode', 'OpenCode', -13, -1.8, 'partial', 'host', 'OpenCode: contract-tested'],
+  ['git', 'Git', -13, -3, 'built', 'host', 'Any other agent: git hooks'],
+  ['adapt', 'Adapters', -9, 0, 'built', 'ring', 'One event shape for every agent'],
+  ['guards', 'Guards', -6, 0, 'built', 'box', 'Secrets and destructive commands'],
+  ['wall', 'Refused', -3, 1.7, 'built', 'wall', 'Bypasses, hidden commands, protected pushes'],
+  ['gate', 'Approve once', -3, -1.7, 'built', 'gate', 'Push, deploy, send: a person approves that exact call'],
+  ['redact', 'Redact', 0, 0, 'built', 'prism', 'Patient data swapped for realistic stand-ins'],
+  ['router', 'Router', 2.6, 0, 'gap', 'octa', 'Picks the playbook for any request'],
+  ['intake', 'Intake', 6, 1.7, 'built', 'dot', 'Repo card and verify commands'],
+  ['spec', 'Spec', 7.4, 1.2, 'built', 'dot', 'Brief before code'],
+  ['investigate', 'How / why', 7.9, 0, 'gap', 'dot', 'Evidence before edits'],
+  ['design', 'Multi-model', 7.4, -1.2, 'partial', 'dot', 'Several designs, one judge'],
+  ['attack', 'Self-attack', 6, -1.7, 'built', 'dot', 'Attack tests on sensitive code'],
+  ['security', 'Security check', 4.6, -1.2, 'gap', 'dot', 'Static always; dev and staging within a signed scope'],
+  ['scan', 'Scan', 4.1, 0, 'built', 'dot', 'Secrets and vulnerable patterns'],
+  ['lint', 'PHI lint', 4.6, 1.2, 'built', 'dot', 'Patient fields out of logs'],
+  ['done', 'Done gate', 10, 0, 'built', 'box', 'No finish without proof'],
+  ['ship', 'Ship gate', 12, 0, 'partial', 'box', 'Reviewer bound to the exact commit'],
+  ['memory', 'Memory', 2.6, -4.4, 'built', 'cyl', 'Lessons recalled by prompt and file'],
+  ['record', 'Recorder', 6, -4.4, 'built', 'cyl', 'Every session, redacted'],
+  ['compact', 'Compaction', 10, -4.4, 'built', 'cyl', 'Asks survive compaction'],
+  ['datasets', 'Datasets', 13.5, -4.4, 'partial', 'stack', 'Training and eval records'],
+  ['eval', 'Eval', 16, -2, 'built', 'stack', 'Blind benchmark, hidden rubrics'],
+  ['model', 'Nodaris model', 18.6, 1.2, 'gap', 'crystal', 'Our own RCM and healthcare agent-building model'],
+];
+const EDGES = [['adapt','guards'],['guards','wall'],['guards','gate'],['guards','redact'],['gate','redact'],['redact','router'],['router','scan'],
+  ['done','ship'],['intake','done'],['attack','done'],['record','datasets'],['datasets','eval'],['eval','model'],['memory','router'],['record','memory'],['compact','done']];
+const ROAD = [['Harness', 'built'], ['Team', 'gap'], ['Data engine', 'gap'], ['Eval suite', 'partial'], ['Own CLI', 'gap'], ['Nodaris model', 'gap']];
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+stage.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 200);
+const world = new THREE.Group(); scene.add(world);
+const flow = new THREE.Group(); const road = new THREE.Group(); world.add(flow, road); road.visible = false;
+scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+const key = new THREE.DirectionalLight(0xffffff, 0.9); key.position.set(5, 10, 12); scene.add(key);
+
+function label(text, color, size) {
+  const c = document.createElement('canvas'); const g = c.getContext('2d'); const px = 48;
+  g.font = `500 ${px}px "Geist Mono", Menlo, monospace`;
+  const w = Math.ceil(g.measureText(text).width) + 24; c.width = w; c.height = px + 20;
+  g.font = `500 ${px}px "Geist Mono", Menlo, monospace`; g.fillStyle = color; g.textBaseline = 'middle'; g.fillText(text, 12, c.height / 2);
+  const t = new THREE.CanvasTexture(c); t.minFilter = THREE.LinearFilter;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false }));
+  const h = size || 0.36; s.scale.set(h * w / c.height, h, 1); return s;
+}
+function mat(status, base) {
+  const color = base != null ? base : COL[status];
+  if (status === 'gap') return new THREE.MeshBasicMaterial({ color: COL.gap, wireframe: true, transparent: true, opacity: 0.8 });
+  if (status === 'partial') return new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.18, transparent: true, opacity: 0.55, roughness: 0.5 });
+  return new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.28, roughness: 0.45, metalness: 0.1 });
+}
+const GEO = {
+  host: new THREE.BoxGeometry(1.5, 0.8, 0.5), ring: new THREE.TorusGeometry(1.3, 0.12, 12, 48), box: new THREE.BoxGeometry(1, 1.3, 1),
+  wall: new THREE.BoxGeometry(0.25, 1.4, 1.6), gate: new THREE.TorusGeometry(0.6, 0.1, 10, 32), prism: new THREE.CylinderGeometry(0.7, 0.7, 1.2, 3),
+  octa: new THREE.OctahedronGeometry(0.8), dot: new THREE.SphereGeometry(0.28, 20, 14), cyl: new THREE.CylinderGeometry(0.55, 0.55, 0.7, 24),
+  stack: new THREE.BoxGeometry(1.2, 0.35, 1.2), crystal: new THREE.IcosahedronGeometry(1.4, 1),
+};
+const byId = {}; const hit = [];
+NODES.forEach(([id, name, x, y, status, shape, tip]) => {
+  const base = shape === 'host' ? COL.host : shape === 'wall' ? COL.gap : shape === 'gate' ? COL.partial : shape === 'stack' || shape === 'crystal' ? COL.data : null;
+  const m = new THREE.Mesh(GEO[shape], shape === 'crystal' ? new THREE.MeshBasicMaterial({ color: COL.data, wireframe: true }) : mat(status, base));
+  m.position.set(x, y, 0);
+  if (shape === 'prism') m.rotation.z = Math.PI / 2;
+  if (shape === 'gate') m.rotation.y = Math.PI / 2;
+  if (shape === 'stack') { for (let i = 1; i < 3; i++) { const s = new THREE.Mesh(GEO.stack, m.material); s.position.y = i * 0.45; m.add(s); } }
+  m.userData = { id, name, tip, status };
+  flow.add(m); byId[id] = m; hit.push(m);
+  const l = label(name, shape === 'dot' ? '#93a3b8' : '#c8d4e4', shape === 'dot' ? 0.4 : 0.5);
+  l.position.set(x, y + (shape === 'dot' ? 0.6 : shape === 'crystal' ? 2 : shape === 'stack' ? 1.5 : 1.05), 0.1);
+  flow.add(l);
+});
+const ringLine = new THREE.Mesh(new THREE.TorusGeometry(2.05, 0.02, 6, 64), new THREE.MeshBasicMaterial({ color: COL.line }));
+ringLine.position.set(6, 0, 0); flow.add(ringLine);
+function edge(a, b, color) {
+  const pa = byId[a].position, pb = byId[b].position;
+  const g = new THREE.BufferGeometry().setFromPoints([pa.clone(), pb.clone()]);
+  flow.add(new THREE.Line(g, new THREE.LineBasicMaterial({ color: color || COL.line, transparent: true, opacity: 0.8 })));
+}
+EDGES.forEach(([a, b]) => edge(a, b, a === 'record' || a === 'datasets' || a === 'eval' ? COL.data : null));
+['claude','codex','gemini','cursor','opencode','git'].forEach(h => edge(h, 'adapt'));
+
+// Packets: routine passes, approval waits at the gate, refused stops at the wall, PHI changes colour at redaction.
+const KINDS = ['ok', 'ok', 'phi', 'wait', 'stop', 'ok', 'phi'];
+const hosts = ['claude','codex','gemini','cursor','opencode','git'];
+const pgeo = new THREE.SphereGeometry(0.16, 14, 10);
+const packets = [];
+function path(kind, host) {
+  const h = byId[host].position; const pts = [[h.x + 0.8, h.y], [-9, 0], [-6, 0]];
+  if (kind === 'stop') pts.push([-3.3, 1.7]);
+  else if (kind === 'wait') pts.push([-3, -1.7], [0, 0]);
+  else pts.push([-3, 0], [0, 0]);
+  if (kind !== 'stop') pts.push([2.6, 0], [4.1, 0], [6, 1.7], [7.9, 0], [6, -1.7], [10, 0], [12, 0], [13.2, 0]);
+  return pts.map(([x, y]) => new THREE.Vector3(x, y, 0));
+}
+function spawn(i) {
+  const kind = KINDS[i % KINDS.length]; const host = hosts[(i * 5) % hosts.length];
+  const m = new THREE.Mesh(pgeo, new THREE.MeshBasicMaterial({ color: kind === 'phi' ? COL.phi : kind === 'wait' ? COL.partial : kind === 'stop' ? COL.gap : COL.built, transparent: true }));
+  flow.add(m);
+  const pts = path(kind, host); const segs = []; let total = 0;
+  for (let k = 1; k < pts.length; k++) { const d = pts[k].distanceTo(pts[k - 1]); segs.push(d); total += d; }
+  const gateAt = kind === 'wait' ? segs.slice(0, 3).reduce((a, b) => a + b, 0) : Infinity;
+  packets.push({ m, kind, pts, segs, total, gateAt, t: 0, hold: 0, done: false });
+}
+function place(p) {
+  let d = p.t;
+  for (let k = 0; k < p.segs.length; k++) {
+    if (d <= p.segs[k]) { p.m.position.lerpVectors(p.pts[k], p.pts[k + 1], d / p.segs[k]); return; }
+    d -= p.segs[k];
+  }
+  p.m.position.copy(p.pts[p.pts.length - 1]);
+}
+for (let i = 0; i < 7; i++) spawn(i);
+packets.forEach((p, i) => { p.t = (i / 7) * p.total; });
+let spawned = 7;
+
+// Road to the model: rising platforms.
+ROAD.forEach(([name, status], i) => {
+  const x = -10 + i * 4.2, y = -3 + i * 1.1;
+  const color = i === ROAD.length - 1 ? COL.data : COL[status];
+  const plat = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.6, 0.35, 6), mat(status === 'gap' && i !== ROAD.length - 1 ? 'gap' : status, color));
+  plat.position.set(x, y, 0); plat.userData = { name, tip: ['Fully working harness', 'Team uses it daily', 'Sessions, knowledge and synthetic tasks become datasets', 'Standing RCM agent-building eval', 'Our own CLI; Claude Code optional', 'Our own RCM and healthcare model'][i] };
+  road.add(plat); hit.push(plat);
+  const l = label(name, '#c8d4e4', 0.6); l.position.set(x, y + 0.9, 0); road.add(l);
+  if (i < ROAD.length - 1) {
+    const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x + 1.5, y, 0), new THREE.Vector3(x + 2.7, y + 1.1, 0)]);
+    road.add(new THREE.Line(g, new THREE.LineBasicMaterial({ color: COL.line })));
+  }
+});
+const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(1.1, 1), new THREE.MeshBasicMaterial({ color: COL.data, wireframe: true }));
+crown.position.set(-10 + 5 * 4.2, -3 + 5 * 1.1 + 2, 0); road.add(crown);
+const here = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.7, 4), new THREE.MeshBasicMaterial({ color: COL.built }));
+here.rotation.z = Math.PI; here.position.set(-10, -0.6, 0); road.add(here);
+
+// View, drag to turn, hover for one line.
+let view = 'flow', yaw = -0.18, pitch = 0.12, dragging = null;
+function frame() {
+  const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false);
+  camera.aspect = w / h; const narrow = camera.aspect < 1.1;
+  const dist = view === 'flow' ? (narrow ? 46 : 23) : (narrow ? 44 : 24);
+  const cx = view === 'flow' ? 2.8 : 0.5, cy = view === 'flow' ? -0.6 : 0.8;
+  camera.position.set(cx, cy + 2, dist); camera.lookAt(cx, cy, 0); camera.updateProjectionMatrix();
+}
+function setView(v) {
+  view = v; flow.visible = v === 'flow'; road.visible = v === 'road';
+  document.getElementById('v3-flow').setAttribute('aria-pressed', String(v === 'flow'));
+  document.getElementById('v3-road').setAttribute('aria-pressed', String(v === 'road'));
+  frame(); draw();
+}
+document.getElementById('v3-flow').onclick = () => setView('flow');
+document.getElementById('v3-road').onclick = () => setView('road');
+const canvas = renderer.domElement, tip = document.getElementById('v3-tip');
+const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
+canvas.addEventListener('pointerdown', e => { dragging = { x: e.clientX, y: e.clientY, yaw, pitch }; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointerup', () => { dragging = null; });
+canvas.addEventListener('pointermove', e => {
+  const r = canvas.getBoundingClientRect();
+  if (dragging) { yaw = dragging.yaw + (e.clientX - dragging.x) * 0.005; pitch = Math.max(-0.5, Math.min(0.6, dragging.pitch + (e.clientY - dragging.y) * 0.004)); draw(); return; }
+  ptr.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ptr, camera);
+  const found = ray.intersectObjects(hit.filter(o => o.parent.visible), false)[0];
+  if (found) {
+    const u = found.object.userData;
+    tip.innerHTML = '<b></b><span></span>'; tip.firstChild.textContent = u.name + (u.status ? ' · ' + u.status : ''); tip.lastChild.textContent = u.tip;
+    tip.style.left = Math.min(e.clientX - r.left + 14, r.width - 250) + 'px'; tip.style.top = (e.clientY - r.top + 14) + 'px'; tip.style.opacity = 1;
+  } else tip.style.opacity = 0;
+});
+canvas.addEventListener('pointerleave', () => { tip.style.opacity = 0; });
+
+function draw() { world.rotation.set(pitch, yaw, 0); renderer.render(scene, camera); }
+let last = performance.now(), visible = true;
+new IntersectionObserver(es => { visible = es[0].isIntersecting; }).observe(stage);
+function tick(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (visible && !document.hidden) {
+    byId.model.rotation.y += dt * 0.4; crown.rotation.y += dt * 0.5; byId.router.rotation.y += dt * 0.8;
+    here.position.y = -0.6 + Math.sin(now / 400) * 0.15;
+    packets.forEach(p => {
+      if (p.done) return;
+      if (p.t >= p.gateAt && p.hold < 1.4) { p.t = p.gateAt; p.hold += dt; byId.gate.material.emissiveIntensity = 0.3 + Math.sin(now / 90) * 0.25; }
+      else p.t += dt * 3.2;
+      if (p.kind === 'phi' && p.m.position.x > 0) p.m.material.color.setHex(COL.built);
+      if (p.kind === 'stop' && p.t >= p.total) { p.m.material.opacity -= dt * 2; p.m.scale.multiplyScalar(1 + dt * 2); if (p.m.material.opacity <= 0) p.done = true; }
+      else if (p.t >= p.total) p.done = true;
+      place(p);
+    });
+    for (let i = packets.length - 1; i >= 0; i--) if (packets[i].done) { flow.remove(packets[i].m); packets[i].m.material.dispose(); packets.splice(i, 1); spawn(spawned++); }
+    draw();
+  }
+  requestAnimationFrame(tick);
+}
+packets.forEach(place);
+addEventListener('resize', () => { frame(); draw(); });
+frame(); draw();
+if (!reduce) requestAnimationFrame(tick);
+})();
+</script>

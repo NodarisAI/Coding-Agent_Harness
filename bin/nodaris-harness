@@ -1,0 +1,8 @@
+#!/usr/bin/env python3
+"""Entry point: runs the harness engine that sits next to this file."""
+import os, sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "engine"))
+from nodaris_harness.cli import main  # noqa: E402
+
+sys.exit(main())

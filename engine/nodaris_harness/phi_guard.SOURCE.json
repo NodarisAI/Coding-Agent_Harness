@@ -1,0 +1,8 @@
+{
+  "source": "nodaris agent-os: compliance/phi_guard.py",
+  "repo": "NodarisAI agent-os",
+  "commit": "08936d0",
+  "copied": "2026-09-25",
+  "sha256": "62af431edf792e58e6761f960217bb6ef059d47e1a42804d3db8c805e71d08b4",
+  "note": "Unmodified copy of the SMCP regex-tier PHI scanner. Never edit it here: change the source, then re-copy and update sha256. phi_gate.py refuses to run if the hash differs."
+}
