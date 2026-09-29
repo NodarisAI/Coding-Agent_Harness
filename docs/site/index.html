@@ -783,7 +783,7 @@ function watchReveal() {
 
 /* ---------- stats and benchmark ---------- */
 (() => {
-  const ST = [["349", "automated tests, run before every release"], ["30", "skills across the three packs"], ["5", "coding agents supported, plus git hooks"], ["71", "credential and key-store deny rules"], ["50 ms", "median check time per command"]];
+  const ST = [["350", "automated tests, run before every release"], ["30", "skills across the three packs"], ["5", "coding agents supported, plus git hooks"], ["71", "credential and key-store deny rules"], ["50 ms", "median check time per command"]];
   $("#stats").innerHTML = ST.map(([n, l]) => `<div class="glass stat spot rv"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
   const B = [
     ["Total time", "8 tasks, seconds", 6318, 6383, v => v.toLocaleString("en-US") + " s", 7000],
