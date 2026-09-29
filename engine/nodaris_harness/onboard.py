@@ -651,6 +651,9 @@ def interactive(ui=None, which=None, runner=None, show_splash=True, save_setting
             _graph.run_commands(cmds, runner, write=lambda t: ui.line(t, stream))
         if settings.get("jev"):
             fetch_jev_key(settings, runner, lambda t: ui.line(t, stream))
+        else:
+            from . import jev as _jev
+            _jev.set_enabled(False)
         ui.line(f"Settings saved to {settings_path()}.", stream)
     return settings
 
@@ -658,6 +661,7 @@ def interactive(ui=None, which=None, runner=None, show_splash=True, save_setting
 def fetch_jev_key(settings, runner=None, write=print):
     """Fetch the Jev team key from AWS once, when it is not already on this machine. Never prints the key."""
     from . import jev
+    jev.set_enabled(True)
     if jev.status()["key"]:
         write("Jev: the team key is already on this machine.")
         return True

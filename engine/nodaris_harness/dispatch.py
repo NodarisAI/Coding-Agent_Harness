@@ -217,15 +217,11 @@ def prompt(ev):
 
 
 def _jev(ev, text):
-    from . import jev
-    marker = os.path.join(gates._sdir(ev["session_id"]), "jev-seen")
-    first = not os.path.exists(marker)
-    if first:
-        try:
-            open(marker, "w").close()
-        except OSError:
-            pass
-    return jev.for_prompt(ev, text, first)
+    try:
+        from . import jev
+        return jev.for_prompt(ev, text, os.path.join(gates._sdir(ev["session_id"]), "jev-seen"))
+    except Exception:  # noqa: BLE001  Jev is best effort and never costs the prompt its other context
+        return ""
 
 
 def post_tool(ev):

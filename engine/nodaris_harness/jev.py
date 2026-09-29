@@ -11,7 +11,7 @@ anything leaves the machine. Jev is best effort: with no key, no network or a sp
 The key is the Nodaris team key, fetched once from AWS Secrets Manager with the person's own AWS login
 (`nodaris-harness jev fetch-key`) and kept in a file only they can read. It is never printed or committed.
 """
-import datetime, http.client, json, os, re, subprocess, time
+import datetime, http.client, json, os, re, subprocess, threading, time
 from urllib.parse import urlsplit
 
 from . import policy, redact
@@ -142,27 +142,43 @@ def fetch_key(profile=None, secret_id=SECRET_ID, runner=subprocess.run):
     if value.startswith("{"):
         try:
             obj = json.loads(value)
-            value = str(obj.get("OPENROUTER_API_KEY") or obj.get("key") or next(iter(obj.values()), ""))
-        except (ValueError, StopIteration):
+            value = obj.get("OPENROUTER_API_KEY") or obj.get("key") if isinstance(obj, dict) else ""
+            value = value if isinstance(value, str) else ""
+        except ValueError:
             value = ""
     if not value or "\n" in value or len(value) < 20:
         return False, "The team key in AWS is empty or malformed. Ask a Nodaris admin to check " + secret_id + "."
     path = key_path()
-    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
     tmp = path + ".tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as fh:
-        fh.write(value + "\n")
-    os.replace(tmp, path)
-    os.chmod(path, 0o600)
+    try:
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        os.chmod(os.path.dirname(path), 0o700)
+        if os.path.lexists(tmp):
+            os.remove(tmp)
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        with os.fdopen(fd, "w") as fh:
+            fh.write(value + "\n")
+        os.replace(tmp, path)
+        os.chmod(path, 0o600)
+    except OSError as exc:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return False, "The team key could not be saved in %s (%s). Check that folder, then run `nodaris-harness jev fetch-key` again." % (
+            os.path.dirname(path), type(exc).__name__)
+    try:
+        os.remove(_auth_flag())
+    except OSError:
+        pass
     return True, "The team key is saved in " + path + ", readable only by you."
 
 
 def status():
     key = _key()
     spent = _spent_today()
-    return {"enabled": not is_off(), "key": bool(key), "key_path": key_path(), "spent_today_usd": round(spent, 4),
-            "daily_cap_usd": DAILY_CAP_USD}
+    return {"enabled": not is_off() and _chosen(), "key": bool(key), "key_path": key_path(),
+            "key_refused": os.path.exists(_auth_flag()), "spent_today_usd": round(spent, 4), "daily_cap_usd": DAILY_CAP_USD}
 
 
 def _ledger():
@@ -184,19 +200,27 @@ def _spent_today():
 
 
 def _recent_failures(window=180):
-    now, n = time.time(), 0
+    """Failures in a row at the end of today's ledger, counting only those inside the window."""
+    now, recs = time.time(), []
     try:
         with open(_ledger()) as fh:
             for ln in fh:
                 try:
-                    rec = json.loads(ln)
+                    recs.append(json.loads(ln))
                 except ValueError:
                     continue
-                if not rec.get("ok") and now - float(rec.get("t") or 0) < window:
-                    n += 1
     except OSError:
         pass
+    n = 0
+    for rec in reversed(recs):
+        if rec.get("ok") or now - float(rec.get("t") or 0) >= window:
+            break
+        n += 1
     return n
+
+
+def _auth_flag():
+    return os.path.join(_dir(), "key-refused")
 
 
 def _log(rec):
@@ -284,6 +308,17 @@ def _cost(data, in_chars):
     return float(tin) * 1.0 / 1e6
 
 
+def _endpoint(url=None):
+    """The team key goes only to OpenRouter over HTTPS; an override is honoured only for a loopback test server."""
+    url = url or os.environ.get("NODARIS_JEV_URL") or URL
+    u = urlsplit(url)
+    if u.scheme == "https" and u.hostname == "openrouter.ai":
+        return url
+    if u.scheme in ("http", "https") and u.hostname in ("127.0.0.1", "localhost", "::1"):
+        return url
+    return URL
+
+
 def ask(text, first, key=None, url=None):
     """Jev's answers for a message that already passed the privacy checks, or None."""
     key = key or _key()
@@ -294,27 +329,45 @@ def ask(text, first, key=None, url=None):
     raw = json.dumps(body)
     if key in raw:
         return None
-    url = url or os.environ.get("NODARIS_JEV_URL") or URL
-    started, deadline, attempts, err = time.monotonic(), time.monotonic() + BUDGET_S, 0, "no time"
-    while time.monotonic() < deadline - 0.3 and attempts < 2:
-        attempts += 1
-        try:
-            data = _post(url, body, key, min(ATTEMPT_S, deadline - time.monotonic()))
-            ans = parse(data, qs)
-            _log({"t": time.time(), "ok": True, "ms": int((time.monotonic() - started) * 1000),
-                  "cost": _cost(data, len(raw))})
-            return ans
-        except _HttpFail as exc:
-            err = "http %s" % exc.status
-            if exc.status not in RETRY_STATUS:
+    url = _endpoint(url)
+    started = time.monotonic()
+    box = {}
+
+    def call():
+        attempts, err = 0, "no time"
+        while time.monotonic() < started + BUDGET_S - 0.3 and attempts < 2:
+            attempts += 1
+            try:
+                data = _post(url, body, key, min(ATTEMPT_S, started + BUDGET_S - time.monotonic()))
+                box["ans"], box["cost"] = parse(data, qs), _cost(data, len(raw))
+                return
+            except _HttpFail as exc:
+                err = "http %s" % exc.status
+                if exc.status in (401, 402, 403):
+                    box["refused"] = True
+                if exc.status not in RETRY_STATUS or exc.status == 429:
+                    break
+            except ValueError:
+                err = "bad answer"
                 break
-        except ValueError:
-            err = "bad answer"
-            break
-        except Exception as exc:  # noqa: BLE001  network trouble never holds up the prompt
-            err = type(exc).__name__
-    _log({"t": time.time(), "ok": False, "err": err, "ms": int((time.monotonic() - started) * 1000),
-          "cost": len(raw) / 4 / 1e6})
+            except Exception as exc:  # noqa: BLE001  network trouble never holds up the prompt
+                err = type(exc).__name__
+        box["err"] = err
+
+    # The whole call, DNS included, runs in a thread the prompt waits on for at most the budget.
+    t = threading.Thread(target=call, daemon=True)
+    t.start()
+    t.join(BUDGET_S)
+    ms = int((time.monotonic() - started) * 1000)
+    if "ans" in box:
+        _log({"t": time.time(), "ok": True, "ms": ms, "cost": box["cost"]})
+        return box["ans"]
+    if box.get("refused"):
+        try:
+            open(_auth_flag(), "w").close()
+        except OSError:
+            pass
+    _log({"t": time.time(), "ok": False, "err": box.get("err", "timeout"), "ms": ms, "cost": len(raw) / 4 / 1e6})
     return None
 
 
@@ -339,20 +392,45 @@ def lines(ans):
     return out
 
 
-def for_prompt(ev, text, first):
-    """The context lines for one prompt, or an empty string. Never raises and never sends unchecked text."""
+def _chosen():
+    """Jev runs only for a person whose onboarding turned it on."""
     try:
-        if is_off() or ev.get("agent_id") or not text:
+        with open(os.path.join(policy.home(), "settings.json")) as fh:
+            return json.load(fh).get("jev") is True
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+_NAME_PAIR = re.compile(r"\b[A-Z][a-z'\-]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z'\-]+\b")
+
+
+def mask_names(text):
+    """Replace every capitalised word pair (a possible person's name) with a placeholder. Jev needs the intent of a
+    message, not its proper nouns, and the name detector only finds names next to a cue such as 'patient'."""
+    return _NAME_PAIR.sub("[NAME]", text)
+
+
+def for_prompt(ev, text, marker=None):
+    """The context lines for one prompt, or an empty string. Never raises and never sends unchecked text.
+    marker: a per-session file that records whether Jev has seen a message in this session."""
+    try:
+        if is_off() or not _chosen() or ev.get("agent_id") or not text:
             return ""
         t = text.strip()
         if t.startswith(("/", "!")) or len(t) > MAX_CHARS or len(t.split()) < MIN_WORDS:
             return ""
-        if not _key() or _spent_today() >= DAILY_CAP_USD or _recent_failures() >= 2:
+        if not _key() or os.path.exists(_auth_flag()) or _spent_today() >= DAILY_CAP_USD or _recent_failures() >= 2:
             return ""
         r = redact.redact_text(t)
         if r.verdict == "refused" or r.strong:
             return ""
-        safe, _ = mask_secrets(r.text)
+        safe, _ = mask_secrets(mask_names(r.text))
+        first = not (marker and os.path.exists(marker))
+        if marker and first:
+            try:
+                open(marker, "w").close()
+            except OSError:
+                pass
         return "\n".join(lines(ask(safe, first)))
     except Exception:  # noqa: BLE001
         return ""

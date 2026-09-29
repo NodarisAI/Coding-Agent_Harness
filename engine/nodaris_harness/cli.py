@@ -478,6 +478,13 @@ def cmd_policy(a):
 def cmd_jev(a):
     from . import jev
     if a.action == "on":
+        from . import onboard
+        s = onboard.load() or {}
+        if not s.get("is_nodaris"):
+            print("Jev is available to Nodaris team members only. Run `python3 install.py --reconfigure` if you are one.")
+            return 1
+        s["jev"] = True
+        onboard.save(s)
         jev.set_enabled(True)
         print("Jev is on." + ("" if jev.status()["key"] else " It has no key yet; run `nodaris-harness jev fetch-key`."))
         return 0
@@ -492,6 +499,8 @@ def cmd_jev(a):
     st = jev.status()
     print("Jev is %s. Team key: %s. Spent today: $%.4f of $%.2f." % (
         "on" if st["enabled"] else "off", "present" if st["key"] else "missing", st["spent_today_usd"], st["daily_cap_usd"]))
+    if st["key_refused"]:
+        print("OpenRouter refused the team key. Run `nodaris-harness jev fetch-key` to fetch the current one.")
     return 0
 
 

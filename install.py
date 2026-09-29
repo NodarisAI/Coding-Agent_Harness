@@ -186,8 +186,14 @@ def main(argv=None):
     binp = hosts.bin_path()
     if settings.get("jev") and done:
         onboard.fetch_jev_key(settings, write=tui.line)
-    from nodaris_harness import setupcheck
-    todo = [x for x in setupcheck.checks(settings) if not x[1]]
+    elif not settings.get("jev") and not a.dry_run:
+        from nodaris_harness import jev
+        jev.set_enabled(False)
+    try:
+        from nodaris_harness import setupcheck
+        todo = [x for x in setupcheck.checks(settings) if not x[1]]
+    except Exception:  # noqa: BLE001  the checklist is advice; it never fails an install
+        todo = []
     if todo:
         tui.panel("Before you start: set these up yourself", setupcheck.render(todo)[:-2] +
                   ["", "Run %s setup-check to see this list again." % binp])

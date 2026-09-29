@@ -11,9 +11,9 @@ ORG_REPO = "NodarisAI/Coding-Agent_Harness"
 MIN_CLAUDE = (2, 1, 0)
 
 
-def _run(cmd, runner, timeout=20):
+def _run(cmd, runner, timeout=10):
     try:
-        p = runner(cmd, capture_output=True, text=True, timeout=timeout)
+        p = runner(cmd, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL)
         return p.returncode, (p.stdout or "").strip(), (p.stderr or "").strip()
     except (OSError, subprocess.TimeoutExpired):
         return 127, "", ""
@@ -44,11 +44,13 @@ def checks(settings=None, which=shutil.which, runner=subprocess.run):
                         None if ok else "Update it: claude update"))
             code, text, _ = _run(["claude", "auth", "status"], runner)
             try:
-                signed = code == 0 and bool(json.loads(text).get("loggedIn"))
-            except ValueError:
-                signed = False
+                signed = bool(json.loads(text).get("loggedIn"))
+                known = True
+            except (ValueError, AttributeError):
+                signed, known = True, False
             out.append(("Claude Code sign-in", signed,
-                        "Signed in." if signed else "Not signed in.",
+                        ("Signed in." if signed else "Not signed in.") if known else
+                        "This version of Claude Code cannot report its sign-in; start `claude` to confirm you are signed in.",
                         None if signed else "Run `claude` once and sign in with your Claude account (or run: claude auth login)."))
 
     code, name, _ = _run(["git", "config", "--get", "user.name"], runner)
