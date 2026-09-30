@@ -134,6 +134,57 @@ def test_approve_refuses_without_a_terminal(env):
     assert p.returncode == 2 and "person" in p.stderr
 
 
+def run_in_terminal(env, args, answer):
+    """Run the CLI with a pseudo-terminal as its controlling terminal, type answer at the prompt, return (code, output)."""
+    import pty, select
+    pid, fd = pty.fork()
+    if pid == 0:
+        os.chdir(env["_proj"])
+        os.execve(sys.executable, [sys.executable, BIN] + args, env)
+    out, sent = b"", False
+    while True:
+        if not select.select([fd], [], [], 30)[0]:
+            os.kill(pid, 9)
+            break
+        try:
+            chunk = os.read(fd, 4096)
+        except OSError:
+            break
+        if not chunk:
+            break
+        out += chunk
+        if not sent and b"Type yes" in out:
+            os.write(fd, answer.encode() + b"\n")
+            sent = True
+    os.close(fd)
+    return os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1]), out.decode(errors="replace")
+
+
+def test_approve_in_a_real_terminal_reads_the_answer(env):
+    call = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "git push origin feature/tty"},
+            "session_id": "t1", "cwd": env["_proj"]}
+    reason = hook(env, "claude", call)["hookSpecificOutput"]["permissionDecisionReason"]
+    h = reason.split("nodaris-harness approve ")[1].split()[0]
+    code, out = run_in_terminal(env, ["approve", h], "yes")
+    assert code == 0 and "approved once" in out, out
+    assert hook(env, "claude", call) == {}
+
+
+def test_approve_in_a_real_terminal_refuses_anything_but_yes(env):
+    call = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "git push origin feature/no"},
+            "session_id": "t2", "cwd": env["_proj"]}
+    reason = hook(env, "claude", call)["hookSpecificOutput"]["permissionDecisionReason"]
+    h = reason.split("nodaris-harness approve ")[1].split()[0]
+    code, out = run_in_terminal(env, ["approve", h], "no")
+    assert code == 1 and "not approved" in out, out
+    assert hook(env, "claude", call)["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_security_scope_in_a_real_terminal_is_signed(env):
+    code, out = run_in_terminal(env, ["security", "scope", "--repo", env["_proj"], "--env", "staging=https://staging.example.com"], "yes")
+    assert code == 0 and "Signed scope written" in out, out
+
+
 # ---- installs ------------------------------------------------------------------------------------------------
 
 ORIGINAL = {"claude": ("settings.json", {"model": "opus", "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [
