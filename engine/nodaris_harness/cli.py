@@ -68,7 +68,9 @@ def cmd_approve(a):
     def ask(rec):
         tty_out.write(f"\nRule: {rec['rule']}: {rec['why']}\nTool: {rec['tool']}\nWorking directory: {rec['cwd']}\n"
                       f"Exact action:\n{json.dumps(rec['action'], indent=2)}\n\n"
-                      "Type yes to allow this exact action once: ")
+                      + ("Type yes to allow this exact action once, or session to allow this kind of action in this "
+                         "repository for the rest of the session: " if rec.get("grantable") else
+                         "Type yes to allow this exact action once: "))
         tty_out.flush()
         return tty_in.readline()
     ok, msg = policy.approve(a.hash, getpass.getuser(), ask)

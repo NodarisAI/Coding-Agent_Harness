@@ -15,7 +15,7 @@ Detection is the vendored SMCP scanner (phi_guard.py: Safe Harbor regex tier plu
 does not cover: labelled identifiers in prose ("member id W123456789", "claim #88213") and the claim, reference,
 address and contact elements of an X12 interchange. Anything that cannot be scanned is refused, never passed on.
 """
-import datetime, os, re, secrets, string
+import datetime, json, os, re, secrets, string, subprocess
 
 from . import phi_guard
 
@@ -23,6 +23,20 @@ from . import phi_guard
 # (Varun, 2026-09-25 23:44: no PHI policy for dates or URLs); they are still replaced when a document is redacted.
 STRONG_KINDS = {"PATIENT_NAME", "SSN", "MRN", "MEMBER_ID", "ACCOUNT", "ACCOUNT_ID", "CLAIM_ID", "PHONE", "FAX", "EMAIL",
                 "ADDRESS", "LICENSE", "VEHICLE", "DEVICE", "BIOMETRIC", "PHOTO", "OTHER_ID", "X12_ID", "CONTACT"}
+# Contact details identify a person but say nothing about their health. On their own they do not stop a prompt; with a
+# health cue, in bulk, or next to a health identifier they do (a teammate's report, 2026-09-30). They are still replaced
+# with stand-ins whenever text is redacted, so a model without a BAA never sees them.
+CONTACT_KINDS = {"EMAIL", "PHONE", "FAX", "ADDRESS", "ACCOUNT", "ACCOUNT_ID", "CONTACT"}
+CONTACT_BULK = 3
+HEALTH_CUE = re.compile(
+    r"\b(patients?|pt|dob|d\.o\.b|date of birth|born on|diagnos\w*|dx|icd|cpt|hcpcs|claims?|member|mrn|medical|health|"
+    r"insurance|insured|payer|eligibility|prescri\w*|medications?|treatments?|clinical|hospital|visits?|encounters?|"
+    r"lab results?|conditions?|chart|admission|discharge)\b", re.I)
+EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)")
+TEST_DOMAINS = {"example.com", "example.org", "example.net"}
+TEST_TLDS = {"test", "example", "invalid", "localhost"}
+COMPANY_DOMAINS = {"nodaris.ai"}
+_OWN = {}
 BINARY_EXT = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".png", ".jpg", ".jpeg", ".gif", ".tif", ".tiff",
               ".heic", ".bmp", ".zip", ".gz", ".7z", ".rar", ".dcm", ".sqlite", ".db"}
 
@@ -175,11 +189,63 @@ class Result:
     def strong(self):
         return {k: n for k, n in self.counts.items() if k in STRONG_KINDS}
 
+    def blocking(self, text):
+        """The identifiers that make this text patient information, by kind and count; empty when it is not.
+        Health identifiers always count. Contact details count only with a health cue, in bulk (three or more), or next
+        to a health identifier; the person's own address, company domains and reserved test domains never count."""
+        found = dict(self.strong)
+        allowed = sum(1 for m in EMAIL_RE.finditer(text or "") if _allowed_email(m.group(0), m.group(1)))
+        if allowed and "EMAIL" in found:
+            found["EMAIL"] -= allowed
+            if found["EMAIL"] <= 0:
+                del found["EMAIL"]
+        health = {k: n for k, n in found.items() if k not in CONTACT_KINDS}
+        contact = {k: n for k, n in found.items() if k in CONTACT_KINDS}
+        if health or (contact and (HEALTH_CUE.search(text or "") or sum(contact.values()) >= CONTACT_BULK)):
+            return found
+        return {}
+
     def report(self):
         """What was replaced, by kind and count. Never a value."""
         found = ", ".join(f"{k} {n}" for k, n in sorted(self.counts.items())) or "nothing"
         return {"verdict": self.verdict, "coverage": self.coverage, "replaced": self.counts, "summary": found,
                 "reason": self.reason}
+
+
+def _own_email():
+    """The person's own git email, read once per configuration file."""
+    key = os.environ.get("GIT_CONFIG_GLOBAL", "")
+    if key not in _OWN:
+        try:
+            out = subprocess.run(["git", "config", "--global", "--get", "user.email"], capture_output=True, text=True,
+                                 timeout=2).stdout.strip().lower()
+        except (OSError, subprocess.SubprocessError):
+            out = ""
+        _OWN[key] = out
+    return _OWN[key]
+
+
+def _company_domains():
+    domains = set(COMPANY_DOMAINS)
+    try:
+        home = os.environ.get("NODARIS_HARNESS_HOME") or os.path.join(os.path.expanduser("~"), ".nodaris-harness")
+        with open(os.path.join(home, "settings.json")) as fh:
+            extra = json.load(fh).get("company_domains")
+        if isinstance(extra, list):
+            domains.update(str(d).lower() for d in extra if isinstance(d, str))
+    except (OSError, ValueError, AttributeError):
+        pass
+    return domains
+
+
+def _allowed_email(address, domain):
+    domain = domain.lower()
+    if domain in TEST_DOMAINS or domain.rsplit(".", 1)[-1] in TEST_TLDS:
+        return True
+    if domain in _company_domains() or any(domain.endswith("." + d) for d in _company_domains()):
+        return True
+    own = _own_email()
+    return bool(own) and address.lower() == own
 
 
 def _labelled_spans(text):

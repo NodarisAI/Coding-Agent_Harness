@@ -19,13 +19,17 @@ Every tool call is classified by the harness before it runs, from a versioned po
 - **Routine** (almost everything: reading, editing, tests, builds, local commands) runs and is recorded.
 - **Consequential** (a push, publishing or merging, a deploy, a command on another machine, sending a message or
   data outside this machine, a destructive database statement, installing software on the machine, a paid model,
-  reading a file marked as holding patient data) runs only after a person approves that exact call in their own
-  terminal with `nodaris-harness approve HASH`. The refusal message gives the hash. An approval covers one call
-  with exactly those arguments; a changed call needs a new one. Ask the person once, then wait.
+  reading a file marked as holding patient data) runs only after a person approves that exact call. Pull request
+  and issue comments can be approved for the rest of the session in one step.
 - **Prohibited** (skipping or disabling a hook or gate, a command the harness cannot read such as downloaded code
   piped into a shell, starting another agent outside the harness, touching the approval store, AI-authorship marks,
-  pushing to a protected branch) never runs from an agent. Do not look for another way to do the same thing; tell
-  the person what is needed and let them decide.
+  pushing to a protected branch) is stopped, and the person can still allow it once after reading the reason.
+- **Getting approval.** The refusal message carries an approval question. In Claude Code, send it with the
+  AskUserQuestion tool exactly as given, with no answers filled in, and let the person choose; if they allow it,
+  repeat exactly the same call. Anywhere, the person can instead run `nodaris-harness approve HASH` in their own
+  terminal; the rules that protect the approval mechanism itself are approved only there. An approval covers one call
+  with exactly those arguments; a changed call needs a new one. Ask once. If the person says no, do not look for
+  another way to do the same thing.
 
 ## The harness pipeline (hooks enforce it; the skills say how)
 - **Intake:** the first prompt of a session carries a repo card with the verify commands. A request that names no

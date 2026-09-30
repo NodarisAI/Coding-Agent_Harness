@@ -70,7 +70,8 @@ def parse(host, payload, event=None):
           "source": p.get("source"), "last_assistant_message": p.get("last_assistant_message"),
           "tool_response": p.get("tool_response"), "prompt": p.get("prompt"), "error": p.get("error"),
           "agent_id": p.get("agent_id"), "agent_type": p.get("agent_type"),
-          "agent_transcript_path": p.get("agent_transcript_path")}
+          "agent_transcript_path": p.get("agent_transcript_path"), "permission_mode": p.get("permission_mode"),
+          "tool_use_id": p.get("tool_use_id")}
     name = event or p.get("hook_event_name") or p.get("event") or ""
     if host in ("claude", "codex"):
         ev["hook_event_name"] = name
@@ -137,11 +138,14 @@ def render(host, ev, outcome):
     """Return (stdout text, exit code) in the host's own contract."""
     name = ev["hook_event_name"]
     decision, reason, ctx = outcome.get("decision", "allow"), outcome.get("reason") or "", outcome.get("context") or ""
-    blocked = decision in ("deny", "block")
+    blocked = decision in ("deny", "block") or (decision == "ask" and host != "claude")
     if blocked and not reason:
         reason = "Blocked by the harness."
     if host in ("claude", "codex"):
         if name == "PreToolUse":
+            if decision == "ask" and host == "claude":
+                return json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "ask",
+                                                          "permissionDecisionReason": reason}}), 0
             if blocked:
                 return json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
                                                           "permissionDecisionReason": reason}}), 0

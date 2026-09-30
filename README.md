@@ -11,7 +11,7 @@ For a one-page tour, with the benchmark results against a plain coding agent, op
 | "Fix the export button" | Edits the first file that looks right and says it is fixed | Finds the cause, writes a failing test, fixes it, runs the checks, and shows you the passing output |
 | "Add sign-in to the admin page" | Writes the feature in one pass | Writes a short spec and threat model first, builds it test-first, and has a separate reviewer check the diff |
 | "Clean up the old build folders" | Runs `rm -rf` | Moves them to a trash you can restore from |
-| "Deploy it" | Runs the deploy | Stops and asks you to approve that exact command once |
+| "Deploy it" | Runs the deploy | Stops and asks you, in the app or in your terminal, to approve that exact command once |
 | A long session with helper agents | Helpers work without your context and spend tokens freely | Helpers get the project's rules and design system, report back at checkpoints, and stay inside a token budget you can see in a live panel |
 | The same mistake next week | Makes it again | Recalls the lesson it recorded, and shares it with your team if you opted in |
 
@@ -19,7 +19,7 @@ For a one-page tour, with the benchmark results against a plain coding agent, op
 
 - **Plans, then builds.** Each request is routed to the right procedure (bug fix, feature, investigation, security check, release, video) with the steps in order.
 - **Proves it.** A coding turn cannot end until a check passed after the last edit, and `nodaris-harness receipt` prints what a session proved for people who do not read code. For a long job, `nodaris-harness ready --arm` keeps the agent working until an acceptance list passes.
-- **Keeps you safe without slowing you down.** Ordinary work runs untouched. Reading secret files, writing a real key into code, hidden commands and pushes to protected branches are refused; pushes, deploys and messages wait for your approval; recursive deletes go to a trash.
+- **Keeps you safe without slowing you down.** Ordinary work runs untouched. Reading secret files, writing a real key into code, hidden commands and pushes to protected branches are stopped; pushes, deploys and messages wait for your approval; recursive deletes go to a trash. The harness is yours: any stop can be overridden once you have read what the action is and why it was stopped, by answering the approval question in Claude Code or with `nodaris-harness approve` in your terminal.
 - **Protects personal data.** Personal and patient identifiers are replaced with realistic stand-ins before a log, error or file leaves your machine. (Patient data, called PHI, may only go to a model under a business associate agreement, the contract US health law requires.)
 - **Learns.** Lessons from mistakes are recalled when the same situation returns; a background learner adapts to how you work, and every change it makes is shown and reversible.
 - **Understands the codebase.** Optional code graphs let the agent answer "what calls this" and "what breaks if this changes" without reading every file.
@@ -31,7 +31,7 @@ A hook is a small command your coding agent runs before and after each action; t
 ```
   you ──► your coding agent ──► action ──► harness hook ──► routine: runs and is recorded
                                                   │        ├► consequential: waits for your approval
-                                                  │        └► prohibited: refused with the reason
+                                                  │        └► prohibited: stopped with the reason; you can still allow it once
                                                   └► the right procedure, lessons and checks added to the agent's context
 ```
 
@@ -79,7 +79,7 @@ To undo: `python3 install.py --uninstall` removes the harness from every agent i
 | Command | What it does |
 |---|---|
 | `nodaris-harness doctor --host claude` | Proves the install works: a secret read, a destructive command, a hook bypass and a protected push are refused, and an ordinary command runs |
-| `nodaris-harness approve HASH` | Approves one waiting action, in your own terminal (`approve --list` shows what is waiting) |
+| `nodaris-harness approve HASH` | Approves one waiting action, in your own terminal (`approve --list` shows what is waiting). In Claude Code you can also answer the approval question the agent shows you |
 | `nodaris-harness redact FILE` | Prints the file with patient identifiers replaced by stand-ins |
 | `nodaris-harness scan` | Checks the changed files for secrets, risky patterns and vulnerable dependencies |
 | `nodaris-harness receipt` | Shows what the last session proved |

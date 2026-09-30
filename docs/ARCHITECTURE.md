@@ -44,8 +44,9 @@ Exact payload shapes are in `docs/HOST-CONTRACTS.md`. `install` writes a diff, a
 `rules/policy.json` (versioned, hashed; currently an unsigned draft) is compiled from the rules of engagement. Rules match the program a shell segment actually runs, not text inside quotes or heredocs.
 
 - **Routine:** anything not listed. Runs and is recorded.
-- **Consequential** (`C-PUSH`, `C-PUBLISH`, `C-DEPLOY`, `C-REMOTE`, `C-SEND`, `C-DB-DESTRUCTIVE`, `C-MACHINE-CHANGE`, `C-PAID-MODEL`, `C-PHI-SOURCE`): refused with a hash until a person runs `nodaris-harness approve HASH` in their own terminal. The approval covers one call with exactly those arguments.
-- **Prohibited** (`P-HOOK-BYPASS`, `P-UNPARSEABLE`, `P-AGENT-LAUNCH`, `P-APPROVAL-STORE`, `P-AI-MARK`, `P-PROTECTED-PUSH`): never run from an agent.
+- **Consequential** (`C-PUSH`, `C-PUBLISH`, `C-COLLAB`, `C-DEPLOY`, `C-REMOTE`, `C-SEND`, `C-DB-DESTRUCTIVE`, `C-MACHINE-CHANGE`, `C-PAID-MODEL`, `C-PHI-SOURCE`): stopped until a person approves that exact call. `C-COLLAB` (pull request and issue comments) uses Claude Code's own permission dialog in a mode that shows one, and can be approved for the session and repository.
+- **Prohibited** (`P-HOOK-BYPASS`, `P-UNPARSEABLE`, `P-AGENT-LAUNCH`, `P-APPROVAL-STORE`, `P-AI-MARK`, `P-PROTECTED-PUSH`): stopped with the reason; the person can still allow the exact call once.
+- **Approving.** Every stop (the guards and the branch rule included) writes a signed pending record. The person approves at the terminal (`nodaris-harness approve HASH`), or in Claude Code answers the approval question the agent sends with AskUserQuestion; the PostToolUse hook turns that answer into the same signed one-time approval. The question is written by the harness from the verified record, the PreToolUse hook refuses one with answers pre-filled, and an answer counts only for the tool call, session and exact question the harness saw go out. `P-HOOK-BYPASS` and `P-APPROVAL-STORE` protect the approval mechanism and are approved only at the terminal. Design: `docs/design/2026-09-30-consent-overrides.md`; threat model: `docs/security/consent-overrides-threat-model.md`.
 
 `nodaris-harness policy --explain "CMD"` shows how a command is classed.
 

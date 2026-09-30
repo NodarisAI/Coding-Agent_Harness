@@ -490,7 +490,7 @@ def for_prompt(ev, text, marker=None):
         if by == "laya" and (not laya_endpoint() or _recent_failures("laya") >= 2):
             return ""
         r = redact.redact_text(t)
-        if r.verdict == "refused" or r.strong:
+        if r.verdict == "refused" or r.blocking(t):
             return ""
         safe, _ = mask_secrets(mask_names(r.text))
         first = not (marker and os.path.exists(marker))

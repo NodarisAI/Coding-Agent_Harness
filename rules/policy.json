@@ -1,5 +1,5 @@
 {
- "version": "0.2-draft",
+ "version": "0.3-draft",
  "source": "rules-of-engagement-v0.2.md, section 3, compiled for the team build",
  "signed": false,
  "signer": null,
@@ -7,7 +7,8 @@
   "Unsigned draft: the accountable human signs the consequential and prohibited sets before they are in force as rules; until then they are the harness defaults.",
   "Unlisted actions run and are recorded (Varun, 2026-09-26 00:32: the harness never refuses ordinary work). RoE R-INT-01 would make them consequential; that difference is open for sign-off.",
   "Rules match the program a shell segment actually runs (after environment assignments and wrappers), with `args` read from that segment; heredoc bodies and quoted text are data, not commands. `anywhere` patterns read the whole command with heredoc bodies and quoted text removed.",
-  "Reads are routine: reading a git setting, listing an API's models or balance, or checking a messaging provider's domain status does not change anything. Only the act that changes or sends is classed."
+  "Reads are routine: reading a git setting, listing an API's models or balance, or checking a messaging provider's domain status does not change anything. Only the act that changes or sends is classed.",
+  "Every stop can be overridden by the person once they have seen the action and the reason (Varun, 2026-09-30): at the terminal, or by answering the approval question in Claude Code. Rules with \"consent\": \"terminal\" protect the approval mechanism itself and are approved only at the terminal."
  ],
  "protected_branches": [
   "main",
@@ -36,6 +37,7 @@
    "id": "P-HOOK-BYPASS",
    "rule": "R-CLASS-06",
    "why": "Skipping or disabling a gate, hook or managed setting.",
+   "consent": "terminal",
    "git_flags": {
     "commit": [
      "-n",
@@ -137,14 +139,16 @@
   {
    "id": "P-APPROVAL-STORE",
    "rule": "R-CLASS-06",
-   "why": "Touching approval records, the approval key or the used-approval list.",
+   "why": "Touching approval records, pending approvals, the approval key or the used-approval list.",
+   "consent": "terminal",
    "path_text": [
-    "\\.nodaris-harness/(keys|approvals|used)"
+    "\\.nodaris-harness/(keys|approvals|used|pending)"
    ],
    "paths": [
     "**/.nodaris-harness/keys/**",
     "**/.nodaris-harness/approvals/**",
-    "**/.nodaris-harness/used/**"
+    "**/.nodaris-harness/used/**",
+    "**/.nodaris-harness/pending/**"
    ]
   },
   {
@@ -190,7 +194,7 @@
     },
     {
      "prog": "gh",
-     "args": "(^|\\s)(pr\\s+(create|merge|edit|close|comment|review)|release\\s+create|repo\\s+(create|delete|edit)|issue\\s+(create|comment|close|edit)|workflow\\s+run)\\b"
+     "args": "(^|\\s)(pr\\s+merge|release\\s+create|repo\\s+(create|delete|edit)|workflow\\s+run)\\b"
     },
     {
      "prog": "gh",
@@ -203,6 +207,18 @@
     {
      "prog": "docker",
      "args": "(^|\\s)push\\b"
+    }
+   ]
+  },
+  {
+   "id": "C-COLLAB",
+   "why": "Opening, editing or commenting on a pull request or an issue, which teammates see.",
+   "ask": true,
+   "grantable": true,
+   "cmd": [
+    {
+     "prog": "gh",
+     "args": "(^|\\s)(pr\\s+(create|edit|close|comment|review)|issue\\s+(create|comment|close|edit))\\b"
     }
    ]
   },

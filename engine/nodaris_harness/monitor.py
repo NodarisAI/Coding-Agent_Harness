@@ -6,8 +6,12 @@ output: only paths, memory titles, short command names and numbers.
 
 Which session: `nodaris` starts Claude Code with NODARIS_PANEL_LINK set; the harness's SessionStart hook writes the
 session's transcript path to <harness home>/live/<link>.json, and the panel started with `--link` follows exactly that
-session through /clear, /resume and compaction. Without a link, --session names one; otherwise the newest transcript
-for this directory is used and its title is shown so the person can see which one it is.
+session through /clear, /resume and compaction. In the desktop app the hook writes the same kind of link, keyed by the
+app's own session id (CLAUDE_CODE_HOST_SESSION_ID), and the dashboard the session offers to open follows that link.
+Without a link, --session names one (found in any project folder), then the session whose shell started the panel
+(CLAUDE_CODE_SESSION_ID); only when none of these exists is the newest transcript for this directory used, and the
+panel then stays on it. It never jumps to another session that happens to write later (Varun, 2026-09-30: every
+session runs in ai-os, so "newest in this folder" showed whichever session was busiest, not the one in front of him).
 
 Claude Code writes one transcript per session at ~/.claude/projects/<cwd with every non-alphanumeric character
 replaced by ->/<session>.jsonl, and one per subagent at <that dir>/<session>/subagents/agent-<id>.jsonl with an
@@ -86,8 +90,14 @@ def find_transcript(cwd=None, session=None, root=None, host="claude"):
         return find_codex_rollout(cwd, session)
     d = project_dir(cwd or os.getcwd(), root)
     if session:
-        p = os.path.join(d, session if session.endswith(".jsonl") else session + ".jsonl")
-        return p if os.path.isfile(p) else None
+        name = session if session.endswith(".jsonl") else session + ".jsonl"
+        if os.path.basename(name) != name:
+            return None
+        p = os.path.join(d, name)
+        if os.path.isfile(p):
+            return p
+        found = glob.glob(os.path.join(glob.escape(root or claude_projects_root()), "*", glob.escape(name)))
+        return max(found, key=os.path.getmtime) if found else None
     files = glob.glob(os.path.join(d, "*.jsonl"))
     return max(files, key=os.path.getmtime) if files else None
 
@@ -107,6 +117,37 @@ def find_codex_rollout(cwd=None, session=None, root=None):
         if session or (head.get("payload") or {}).get("cwd") == cwd:
             return f
     return None
+
+
+def session_link(env=None):
+    """The link this Claude Code process writes its transcript under: the `nodaris` launcher's, or one derived from
+    the desktop app's session id. None for a plain command-line session, which the panel finds by --session."""
+    env = os.environ if env is None else env
+    if env.get("NODARIS_PANEL_LINK"):
+        return env["NODARIS_PANEL_LINK"]
+    host_id = env.get("CLAUDE_CODE_HOST_SESSION_ID")
+    return hashlib.sha256(host_id.encode()).hexdigest()[:32] if host_id else None
+
+
+def resolve(a, cwd, env=None):
+    """(transcript path, session, link) for a panel: an explicit --link or --session, else the session whose shell
+    started it, else the newest in this directory."""
+    env = os.environ if env is None else env
+    host = getattr(a, "host", None) or "claude"
+    link, session = getattr(a, "link", None), getattr(a, "session", None)
+    if not link and not session and host == "claude":
+        link = session_link(env) if env.get("CLAUDE_CODE_HOST_SESSION_ID") and not env.get("NODARIS_PANEL_LINK") else None
+        session = env.get("CLAUDE_CODE_SESSION_ID") or None
+    path = (read_link(link) if link else None) or find_transcript(cwd, session, host=host)
+    return path, session, link
+
+
+def next_path(current, link, cwd, host="claude"):
+    """Which transcript the live panel shows next tick: the link's (it moves with /clear and /resume), otherwise the
+    one it already shows. Only a panel that has found nothing yet looks for the newest in this directory."""
+    if link:
+        return read_link(link) or current
+    return current or find_transcript(cwd, host=host)
 
 
 def link_path(link):
@@ -912,7 +953,9 @@ def dashboard_offer(ev, cli, env=None):
         return ""
     if load_settings().get("dashboard_offer") is False or not SESSION_ID_RE.match(sid):
         return ""
-    cmd = " ".join(shlex.quote(x) for x in (cli, "watch", "--host", "claude", "--session", sid))
+    link = session_link(env)
+    cmd = " ".join(shlex.quote(x) for x in (cli, "watch", "--host", "claude", "--session", sid)
+                   + (("--link", link) if link else ()))
     ask = ("Token dashboard (from the Nodaris harness): in your first reply of this session, ask the person once, "
            "with the AskUserQuestion tool, whether to open the live token dashboard for this session, with the options "
            "\"Open the dashboard\" and \"Not now\". Then carry on with their request. Do not ask again in this session.")
@@ -1419,12 +1462,11 @@ def watch(a, out=None):
         return split(a, out)
     host = getattr(a, "host", None) or "claude"
     cwd = os.getcwd()
-    link = getattr(a, "link", None)
-    path = read_link(link) if link else find_transcript(cwd, getattr(a, "session", None), host=host)
+    path, session, link = resolve(a, cwd)
     follow = getattr(a, "follow", False)
     if tui.plain(out):
         return _watch_plain(path, host, cwd, follow, out)
-    return _watch_live(path, host, cwd, getattr(a, "session", None), out, link)
+    return _watch_live(path, host, cwd, session, out, link)
 
 
 def _watch_plain(path, host, cwd, follow, out):
@@ -1475,9 +1517,9 @@ def _watch_live(path, host, cwd, session, out, link=None):
         with tui.cbreak() as fd:
             while True:
                 now = time.time()
-                if now - last_look > (1 if link else 5) and not session:
+                if now - last_look > (1 if link else 5) and (link or not src.path):
                     last_look = now
-                    p = read_link(link) if link else find_transcript(cwd, host=host)
+                    p = next_path(src.path, link, cwd, host) if link or not session else find_transcript(cwd, session, host=host)
                     if p and p != src.path:
                         src, motion = Source(p, host), Motion()
                 src.poll(now)

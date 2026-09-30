@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0
+
+- Any stop can now be overridden by the person, once they have read what the action is and why it was stopped. The refusal carries an approval question; in Claude Code the agent shows it with AskUserQuestion and the person answers in the app, which works in every permission mode, bypass included. The answer becomes the same signed one-time approval as `nodaris-harness approve HASH`, which still works everywhere. This covers prohibited rules, the secret and destructive-command guards and the branch rule, which used to be final. The two rules that protect the approval mechanism itself (skipping hooks, touching the approval store) are approved only at the terminal.
+- The approval question cannot be answered by the agent: the harness writes it from a signed record of the stopped call, refuses a question sent with answers filled in, and counts an answer only for the tool call, session and exact question it saw go out. The pending approvals folder is now part of the protected approval store.
+- Opening, editing or commenting on pull requests and issues (`gh pr create`, `gh pr comment`, `gh issue create` and similar) is a separate rule, `C-COLLAB`. In a Claude Code mode that shows permission prompts it uses Claude Code's own dialog, and the person can allow it for the rest of the session in that repository. Merges, releases, pushes and deploys are still approved one call at a time.
+- An email address, phone number, street address or account number on its own no longer stops a prompt. Contact details stop it only next to a health word (patient, diagnosis, claim and similar) or a health identifier, or three or more at once. Your own git email, your company domains (`nodaris.ai` and the `company_domains` setting) and reserved test domains never count.
+- The token dashboard follows the session it was opened for. Started from a Claude Code session, including the desktop app's own session id, it stays on that session through /clear and /resume; started by hand in a folder with several sessions, it stays on the one it first showed instead of jumping to whichever session wrote last. A session id passed with `--session` is found even when the dashboard runs in another folder.
+- At the terminal, `nodaris-harness approve` offers "session" as an answer for rules that allow it.
+
 ## 1.1.0
 
 - Laya, a local decision model, can read prompts instead of Jev for people without a Jev key: `nodaris-harness laya on|off|status` and the `decider` setting (`jev`, `laya`, `off`). It is reached only on this machine, needs no key, costs nothing and gets the same privacy checks as Jev. `scripts/laya_dataset.py` and `scripts/laya_eval.py` build its training data from Jev's past answers and measure agreement against a gate. See docs/LAYA.md; the trained model is not shipped yet.

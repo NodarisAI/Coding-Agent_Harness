@@ -69,7 +69,7 @@ Uninstall restores each changed file from the backup taken at install. Your harn
 | `nodaris-harness: command not found` | Run it by path: `~/.nodaris-harness-src/bin/nodaris-harness`. |
 | The doctor reports `MISSING` for a file | Run the install for that agent again. |
 | The doctor reports `FAIL` on a probe | Check that no other tool rewrote the agent's hook settings, then reinstall. If it persists, open an issue with the doctor output. |
-| An action is refused with a hash | It is consequential. If you want it to run, type `nodaris-harness approve HASH` in your own terminal. |
+| An action is stopped with a hash | The harness wants your approval. In Claude Code, answer the approval question the agent shows you; anywhere, type `nodaris-harness approve HASH` in your own terminal. |
 | `Approval must be given by a person in their own terminal` | Approvals cannot come from the agent's shell. Open a separate terminal window and run the command there. |
 | The harness moved to another folder | Reinstall; hook commands carry the absolute path of the clone. |
 | Codex, Gemini, Cursor or OpenCode behaves differently from Claude Code | Those hosts are contract-tested, not live-verified. OpenCode has no prompt or stop hooks, so there the request router, the prompt personal-data check and prompt-time lesson recall do not run, and the done gate and the acceptance loop cannot hold a turn open; the guards, approvals and edit-time checks still apply. See `docs/ARCHITECTURE.md`. |

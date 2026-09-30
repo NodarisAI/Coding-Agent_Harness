@@ -10,6 +10,21 @@ terminal) and writes a record signed with a key in the harness home. The gate ve
 of the call about to run and marks the record used. The key is readable by the same OS user, so this proves a
 person at a terminal only as far as the deny rules keep the agent away from the key; the managed settings step on
 each machine is what locks it (blueprint section 5).
+
+Two lighter forms, only for rules the policy marks (policy 0.3, after a teammate's report on 2026-09-30):
+  - "ask": in a Claude Code permission mode that shows prompts, the hook asks Claude Code to show its own permission
+    dialog instead of refusing, and the person answers there. In bypassPermissions or dontAsk no dialog would appear,
+    so the terminal approval stays.
+  - "grantable": at the terminal the person may answer "session" instead of "yes". That signs a grant for the rule,
+    this session and this repository, valid for GRANT_TTL; the gate honours it without using it up.
+
+Consent overrides (2026-09-30, Varun: the harness is the person's, so they can override any stop once they have
+understood it). Every stop, prohibited ones included, writes a signed pending record. The person can approve it at
+the terminal as before, or, in Claude Code, answer a question the agent asks with AskUserQuestion. The question text
+is written here from the verified pending record, so the person sees the real action and the real reason. The hook
+records the answer only when the PreToolUse hook saw the same question go out with no answers pre-filled (the
+"asked" marker, bound to the tool_use_id and signed) and the answer names the same code, session and question. Rules
+marked "consent": "terminal" protect the approval mechanism itself and are approved only at the terminal.
 """
 import fnmatch, hashlib, hmac, json, os, re, secrets, shlex, time
 
@@ -25,14 +40,17 @@ SHELL_TOOLS = {"Bash", "shell", "run_shell_command", "exec_command", "bash"}
 READ_TOOLS = {"Read", "read_file", "read", "view"}
 WRITE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit", "write_file", "replace", "edit", "write", "apply_patch"}
 APPROVAL_TTL = 30 * 60
+GRANT_TTL = 12 * 60 * 60
 # Programs that put a file's contents into the conversation. Copying, moving or counting a file does not.
 SHELL_READERS = {"cat", "head", "tail", "less", "more", "sed", "awk", "grep", "rg", "cut", "sort", "uniq", "strings",
                  "xxd", "od", "hexdump", "jq", "bat", "nl", "tac", "column", "csvlook", "csvcut", "tr", "paste", "diff"}
 
 
 class Decision:
-    def __init__(self, cls, rule_id="", why="", action_hash="", approved=False):
+    def __init__(self, cls, rule_id="", why="", action_hash="", approved=False, ask=False, grantable=False,
+                 terminal_only=False):
         self.cls, self.rule_id, self.why, self.action_hash, self.approved = cls, rule_id, why, action_hash, approved
+        self.ask, self.grantable, self.terminal_only = bool(ask), bool(grantable), bool(terminal_only)
 
     def __repr__(self):
         return f"Decision({self.cls}, {self.rule_id})"
@@ -252,7 +270,10 @@ def classify(tool, tool_input, cwd, policy=None):
     for cls_name in ("prohibited", "consequential"):
         for rule in policy.get(cls_name, []):
             if _rule_hit(rule, tool, cmd, parsed, bare, path, text, policy):
-                return Decision(cls_name, rule["id"], rule["why"], h)
+                light = cls_name == "consequential"
+                return Decision(cls_name, rule["id"], rule["why"], h, ask=light and rule.get("ask") is True,
+                                grantable=light and rule.get("grantable") is True,
+                                terminal_only=rule.get("consent") == "terminal")
     return Decision("routine", "", "", h)
 
 
@@ -280,11 +301,111 @@ def _sign(record):
     return hmac.new(_key(), body.encode(), hashlib.sha256).hexdigest()
 
 
-def write_pending(decision, tool, tool_input, cwd):
+def scope_of(cwd):
+    """What a grant covers: the repository containing cwd (its top folder), or cwd itself outside a repository."""
+    here = os.path.realpath(cwd or ".")
+    probe = here
+    while True:
+        if os.path.exists(os.path.join(probe, ".git")):
+            return probe
+        up = os.path.dirname(probe)
+        if up == probe:
+            return here
+        probe = up
+
+
+ONCE, FOR_SESSION, DECLINE = "Allow once", "Allow for this session", "Do not allow"
+CODE_RE = re.compile(r"\bNH-([0-9a-f]{10})\b")
+QUESTION_MAX = 1500   # longer actions are approved at the terminal, where the whole action is shown
+PENDING_KEYS = ("hash", "rule", "why", "tool", "action", "cwd", "created", "grantable", "session", "scope",
+                "terminal_only", "question")
+
+
+def describe(tool, tool_input):
+    """The action in words a person can check: the full command, or the tool and the file it touches."""
+    ti = tool_input or {}
+    if tool in SHELL_TOOLS:
+        return "run the command `" + str(ti.get("command") or "") + "`"
+    path = ti.get("file_path") or ti.get("path") or ti.get("notebook_path")
+    if path and tool in READ_TOOLS:
+        return f"read the file {path}"
+    if path and tool in WRITE_TOOLS:
+        return f"change the file {path}"
+    return f"use the {tool} tool with " + json.dumps(ti, sort_keys=True)
+
+
+def _question(rec):
+    text = (f"The Nodaris harness stopped an action ({rec['rule']}). Reason: {rec['why']} "
+            f"The agent wants to {describe(rec['tool'], rec['action'])} in {rec['cwd']}. "
+            f"Approval code NH-{rec['hash'][:10]}. Do you allow it?")
+    return None if rec.get("terminal_only") or len(text) > QUESTION_MAX else text
+
+
+def consent_options(rec):
+    """The AskUserQuestion payload the agent sends unchanged; the person answers it in the app."""
+    opts = [{"label": ONCE, "description": "Run this exact action one time."}]
+    if rec.get("grantable"):
+        opts.append({"label": FOR_SESSION, "description": "Allow this kind of action in this repository until the "
+                                                          "session ends, for up to 12 hours."})
+    opts.append({"label": DECLINE, "description": "Keep the action stopped."})
+    return {"questions": [{"question": rec["question"], "header": "Approval", "multiSelect": False, "options": opts}]}
+
+
+def _sign_pending(rec):
+    body = json.dumps({k: rec.get(k) for k in PENDING_KEYS}, sort_keys=True)
+    return hmac.new(_key(), ("pending:" + body).encode(), hashlib.sha256).hexdigest()
+
+
+def _prune(folder, age=24 * 60 * 60):
+    now = time.time()
+    try:
+        for name in os.listdir(folder):
+            path = os.path.join(folder, name)
+            if now - os.path.getmtime(path) > age:
+                os.remove(path)
+    except OSError:
+        pass
+
+
+def write_pending(decision, tool, tool_input, cwd, session=None):
+    """Record a stopped call so a person can approve it, and return the record (with its consent question)."""
     rec = {"hash": decision.action_hash, "rule": decision.rule_id, "why": decision.why, "tool": tool,
-           "action": tool_input, "cwd": cwd, "created": time.time()}
-    with open(os.path.join(_dirs()["pending"], decision.action_hash + ".json"), "w") as fh:
+           "action": tool_input, "cwd": cwd, "created": time.time(), "grantable": decision.grantable,
+           "session": session, "scope": scope_of(cwd), "terminal_only": decision.terminal_only}
+    rec["question"] = _question(rec)
+    rec["signature"] = _sign_pending(rec)
+    folder = _dirs()["pending"]
+    _prune(folder)
+    with open(os.path.join(folder, decision.action_hash + ".json"), "w") as fh:
         json.dump(rec, fh, indent=1)
+    return rec
+
+
+def _load_pending(path):
+    """A pending record the harness wrote, unchanged, describing the call its hash names; otherwise None."""
+    try:
+        rec = json.load(open(path))
+        good = hmac.compare_digest(str(rec.get("signature", "")), _sign_pending(rec))
+        same = action_hash(rec["tool"], rec["action"], rec["cwd"]) == rec["hash"]
+    except (ValueError, KeyError, OSError, TypeError):
+        return None
+    return rec if good and same else None
+
+
+def _write_approval(rec, approver, channel):
+    out = {"hash": rec["hash"], "action": rec["action"], "approver": approver, "channel": channel, "created": time.time()}
+    out["signature"] = _sign(out)
+    with open(os.path.join(_dirs()["approvals"], rec["hash"] + ".json"), "w") as fh:
+        json.dump(out, fh, indent=1)
+
+
+def _write_grant(rec, approver, channel):
+    grant = {"rule": rec["rule"], "session": rec["session"], "scope": rec["scope"], "approver": approver,
+             "channel": channel, "created": time.time()}
+    grant["signature"] = _sign_grant(grant)
+    name = "grant-" + hashlib.sha256(json.dumps([grant["rule"], grant["session"], grant["scope"]]).encode()).hexdigest()[:24]
+    with open(os.path.join(_dirs()["approvals"], name + ".json"), "w") as fh:
+        json.dump(grant, fh, indent=1)
 
 
 def approve(action_hash_value, approver, answer_reader):
@@ -293,16 +414,116 @@ def approve(action_hash_value, approver, answer_reader):
     pending = os.path.join(d["pending"], action_hash_value + ".json")
     if not os.path.exists(pending):
         return False, "no pending action with that hash"
-    rec = json.load(open(pending))
-    answer = answer_reader(rec)
-    if answer.strip().lower() != "yes":
+    rec = _load_pending(pending)
+    if rec is None:
+        return False, "not approved: the pending record was changed or does not match its action; repeat the call"
+    answer = (answer_reader(rec) or "").strip().lower()
+    if answer == "session":
+        if not (rec.get("grantable") and rec.get("session")):
+            return False, "not approved: this action can only be approved once; type yes"
+        _write_grant(rec, approver, "terminal")
+        os.remove(pending)
+        return True, f"approved for this session: {rec['rule']} actions in {rec['scope']}"
+    if answer != "yes":
         return False, "not approved"
-    out = {"hash": rec["hash"], "action": rec["action"], "approver": approver, "channel": "terminal", "created": time.time()}
-    out["signature"] = _sign(out)
-    with open(os.path.join(d["approvals"], rec["hash"] + ".json"), "w") as fh:
-        json.dump(out, fh, indent=1)
+    _write_approval(rec, approver, "terminal")
     os.remove(pending)
     return True, "approved once"
+
+
+def _asked_path(tool_use_id):
+    return os.path.join(_dirs()["pending"], "asked-" + hashlib.sha256(str(tool_use_id).encode()).hexdigest()[:24] + ".json")
+
+
+def _sign_asked(rec):
+    body = json.dumps({k: rec.get(k) for k in ("tool_use_id", "session", "questions", "created")}, sort_keys=True)
+    return hmac.new(_key(), ("asked:" + body).encode(), hashlib.sha256).hexdigest()
+
+
+def mark_asked(tool_use_id, session, questions):
+    """Called by the PreToolUse hook when an approval question goes out with no answers filled in."""
+    if not tool_use_id or not session:
+        return False
+    rec = {"tool_use_id": str(tool_use_id), "session": session, "questions": list(questions), "created": time.time()}
+    rec["signature"] = _sign_asked(rec)
+    with open(_asked_path(tool_use_id), "w") as fh:
+        json.dump(rec, fh)
+    return True
+
+
+def _take_asked(tool_use_id, session):
+    path = _asked_path(tool_use_id)
+    try:
+        rec = json.load(open(path))
+        os.remove(path)
+        good = hmac.compare_digest(str(rec.get("signature", "")), _sign_asked(rec))
+    except (ValueError, KeyError, OSError, TypeError):
+        return None
+    fresh = time.time() - float(rec.get("created") or 0) <= APPROVAL_TTL
+    return rec["questions"] if good and fresh and rec.get("session") == session else None
+
+
+def record_consent(tool_use_id, session, answers, approver):
+    """Turn the person's answers to approval questions into approvals. Returns one line per question it handled.
+
+    Only questions the PreToolUse hook saw go out unanswered count, and only when the question is exactly the one
+    the harness wrote for that code in this session."""
+    if not isinstance(answers, dict):
+        return []
+    asked = _take_asked(tool_use_id, session)
+    out = []
+    for question, label in answers.items():
+        m = CODE_RE.search(str(question))
+        if not m:
+            continue
+        code = "NH-" + m.group(1)
+        if asked is None or question not in asked:
+            out.append(f"{code}: nothing was approved, because the harness did not see this question asked unanswered.")
+            continue
+        folder = _dirs()["pending"]
+        names = [n for n in os.listdir(folder) if n.startswith(m.group(1)) and not n.startswith("asked-")]
+        rec = _load_pending(os.path.join(folder, names[0])) if len(names) == 1 else None
+        if (rec is None or rec.get("session") != session or rec.get("question") != question
+                or time.time() - float(rec.get("created") or 0) > APPROVAL_TTL):
+            out.append(f"{code}: nothing was approved, because the question does not match a current stopped action "
+                       f"in this session.")
+            continue
+        path = os.path.join(folder, names[0])
+        if label == ONCE:
+            _write_approval(rec, approver, "app")
+            os.remove(path)
+            out.append(f"{code}: the person allowed this action once. Repeat exactly the same call now.")
+        elif label == FOR_SESSION and rec.get("grantable") and rec.get("session"):
+            _write_grant(rec, approver, "app")
+            os.remove(path)
+            out.append(f"{code}: the person allowed {rec['rule']} actions in {rec['scope']} for this session. "
+                       f"Repeat the call now.")
+        elif label == DECLINE:
+            os.remove(path)
+            out.append(f"{code}: the person did not allow this action. Do not try it another way; continue without it.")
+        else:
+            out.append(f"{code}: the answer was not one of the offered choices, so nothing was approved.")
+    return out
+
+
+def _sign_grant(grant):
+    body = json.dumps({k: grant[k] for k in ("rule", "session", "scope", "approver", "channel", "created")}, sort_keys=True)
+    return hmac.new(_key(), ("grant:" + body).encode(), hashlib.sha256).hexdigest()
+
+
+def has_grant(rule_id, session, cwd):
+    """True when a signed, unexpired grant covers this rule, session and repository. A grant is not used up."""
+    if not session:
+        return False
+    d = _dirs()
+    name = "grant-" + hashlib.sha256(json.dumps([rule_id, session, scope_of(cwd)]).encode()).hexdigest()[:24]
+    try:
+        rec = json.load(open(os.path.join(d["approvals"], name + ".json")))
+        good = hmac.compare_digest(str(rec.get("signature", "")), _sign_grant(rec))
+    except (ValueError, KeyError, OSError, TypeError):
+        return False
+    return (good and rec.get("rule") == rule_id and rec.get("session") == session and rec.get("scope") == scope_of(cwd)
+            and time.time() - float(rec.get("created") or 0) <= GRANT_TTL)
 
 
 def consume_approval(action_hash_value):
