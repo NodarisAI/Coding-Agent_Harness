@@ -49,6 +49,7 @@ def test_enforce_off_turns_every_stop_into_a_warning(env):
     settings(enforce=False)
     out = push(env)
     assert out["decision"] == "allow" and out["relaxed"] and "C-PUSH" in out["context"]
+    assert "did not run" not in out["context"] and "push leaves this machine" in out["context"]
     out = prompt(env)
     assert out["decision"] == "allow" and "patient information" in out["context"]
     assert SSN not in out["context"]

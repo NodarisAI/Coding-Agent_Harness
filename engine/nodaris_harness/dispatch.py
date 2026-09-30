@@ -381,7 +381,8 @@ def handle(ev):
             outcome = {"decision": "allow", "rule": "engine-error"}
     if outcome.get("decision") in ("deny", "block", "ask") and _relaxed(outcome.get("rule")):
         # The person turned this stop off (Varun, 2026-09-30): the call runs, and the agent is told what was relaxed.
-        why = (outcome.get("reason") or "").split("\n")[0].split(". ")[0].rstrip(".")
+        why = (outcome.get("reason") or "").split("\n")[0].replace("This action did not run. ", "")
+        why = why.split(". ")[0].rstrip(".")
         signals.record(ev.get("session_id"), "relaxed", rule=outcome.get("rule"))
         outcome = {"decision": "allow", "rule": outcome.get("rule"), "relaxed": True,
                    "context": "\n\n".join(x for x in (outcome.get("context"),
