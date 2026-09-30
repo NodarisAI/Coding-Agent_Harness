@@ -84,6 +84,18 @@ def _approval_text(decision, ev, rec=None):
 AGENT_TOOLS = ("Task", "Agent")
 
 
+def _relaxed(rule):
+    """True when the person's `enforce` setting turns this stop into a warning: false relaxes every stop, a list
+    relaxes the rules it names (a combined stop only when every part is named). A missing or unreadable setting
+    keeps every stop enforced."""
+    enforce = _setting("enforce", True)
+    if enforce is False:
+        return True
+    if isinstance(enforce, list) and rule:
+        return all(part in enforce for part in str(rule).split("+"))
+    return False
+
+
 def _setting(key, default):
     try:
         with open(os.path.join(policy.home(), "settings.json")) as f:
@@ -367,6 +379,14 @@ def handle(ev):
                        "reason": f"The harness could not check this call ({type(exc).__name__}), so it did not run. Run `{CLI} doctor`."}
         else:
             outcome = {"decision": "allow", "rule": "engine-error"}
+    if outcome.get("decision") in ("deny", "block", "ask") and _relaxed(outcome.get("rule")):
+        # The person turned this stop off (Varun, 2026-09-30): the call runs, and the agent is told what was relaxed.
+        why = (outcome.get("reason") or "").split("\n")[0].split(". ")[0].rstrip(".")
+        signals.record(ev.get("session_id"), "relaxed", rule=outcome.get("rule"))
+        outcome = {"decision": "allow", "rule": outcome.get("rule"), "relaxed": True,
+                   "context": "\n\n".join(x for x in (outcome.get("context"),
+                                                        f"Nodaris harness, warning only because enforcement is off "
+                                                        f"for {outcome.get('rule') or 'this check'}: {why}.") if x)}
     if outcome.get("decision") in ("deny", "block") and outcome.get("rule"):
         signals.record(ev.get("session_id"), "gate", rule=outcome["rule"])
     trajectory.record(ev, outcome)

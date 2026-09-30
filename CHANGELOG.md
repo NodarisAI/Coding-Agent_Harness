@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.1
+
+- Added `nodaris-harness enforce off|on|relax RULE...|status` and the `enforce` setting. Off turns every harness stop (the prompt check for patient information, the finish check, the planning reminder, the subagent token budget, approvals and guards) into a warning: the action runs and the agent is told what would have stopped it. `relax` does this only for the rules you name, for example `nodaris-harness enforce relax done-gate R-DATA-PROMPT`. A relaxed stop is still recorded. Enforcement stays on when the setting is missing or the settings file cannot be read.
+
 ## 1.2.0
 
 - Any stop can now be overridden by the person, once they have read what the action is and why it was stopped. The refusal carries an approval question; in Claude Code the agent shows it with AskUserQuestion and the person answers in the app, which works in every permission mode, bypass included. The answer becomes the same signed one-time approval as `nodaris-harness approve HASH`, which still works everywhere. This covers prohibited rules, the secret and destructive-command guards and the branch rule, which used to be final. The two rules that protect the approval mechanism itself (skipping hooks, touching the approval store) are approved only at the terminal.

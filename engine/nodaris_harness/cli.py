@@ -518,6 +518,37 @@ def cmd_jev(a):
     return 0
 
 
+def cmd_enforce(a):
+    """Turn the harness's stops into warnings, all of them or only the named rules, or back on."""
+    path = os.path.join(policy.home(), "settings.json")
+    try:
+        with open(path) as fh:
+            s = json.load(fh)
+    except (OSError, ValueError):
+        s = {}
+    s = s if isinstance(s, dict) else {}
+    if a.action in ("on", "off", "relax"):
+        if a.action == "relax" and not a.rules:
+            print("Name the rules to relax, for example: nodaris-harness enforce relax done-gate R-DATA-PROMPT", file=sys.stderr)
+            return 2
+        s["enforce"] = {"on": True, "off": False}.get(a.action, list(a.rules))
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w") as fh:
+            json.dump(s, fh, indent=1)
+            fh.write("\n")
+        os.replace(tmp, path)
+    enforce = s.get("enforce", True)
+    if enforce is False:
+        print("Enforcement is off. Every harness stop is shown to the agent as a warning and the action runs. "
+              "Turn it back on with: nodaris-harness enforce on")
+    elif isinstance(enforce, list):
+        print("Enforcement is on, except for these rules, which only warn: " + ", ".join(enforce) + ".")
+    else:
+        print("Enforcement is on. Stops wait for your approval.")
+    return 0
+
+
 def cmd_laya(a):
     """Laya, the local decision model: switch the harness to it or back, and check that its server answers."""
     from . import jev
@@ -632,6 +663,9 @@ def main(argv=None):
     s = sub.add_parser("jev", help="Jev, the prompt reader: status, on, off, or fetch the team key from AWS")
     s.add_argument("action", choices=["status", "on", "off", "fetch-key"]); s.add_argument("--profile")
     s.set_defaults(fn=cmd_jev)
+    s = sub.add_parser("enforce", help="turn the harness's stops into warnings (off), for named rules (relax), or back on")
+    s.add_argument("action", choices=["status", "on", "off", "relax"]); s.add_argument("rules", nargs="*")
+    s.set_defaults(fn=cmd_enforce)
     s = sub.add_parser("laya", help="Laya, the local decision model: status, on or off")
     s.add_argument("action", choices=["status", "on", "off"]); s.set_defaults(fn=cmd_laya)
     s = sub.add_parser("setup-check", help="what you still need to set up yourself: sign-ins, git, the Jev key")
