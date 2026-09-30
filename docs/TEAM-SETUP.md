@@ -96,7 +96,7 @@ Every line should read `ok`. Each `todo` line shows the command that fixes it.
 - Commit the files you changed by name. The harness refuses `git add -A` and `git add .` in product repositories.
 - Push your branch and open a pull request: `git push -u origin feat/my-change`, then `gh pr create`.
 - A reviewer approves the pull request on GitHub, and it is merged there. Pushes to `main`, `master`, `staging`, `prod` and `release` branches are refused, by the harness on your machine and by the branch rules on GitHub.
-- Deploys, messages and other actions that are hard to undo wait for your approval. Run `nodaris-harness approve --list` in your own terminal to see them, and `nodaris-harness approve HASH` to approve one.
+- Deploys, messages and other actions that are hard to undo wait for your approval. In Claude Code the agent asks you with an approval question you answer in the app. In any agent, run `nodaris-harness approve --list` in your own terminal to see what is waiting, and `nodaris-harness approve HASH` to approve one.
 
 ## Everyday commands
 

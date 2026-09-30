@@ -38,7 +38,7 @@ Rules while installing:
 - Never install a plugin, extension or package the person has not agreed to. Plugin discovery may suggest company plugins; each one needs its own yes.
 - Never read, print or copy secrets, `.env` files, keys or tokens, including when a config file seems to need one.
 - Never edit the harness's guard files, policy or approval store.
-- Only a person can approve consequential actions, in their own terminal with `nodaris-harness approve HASH`. Do not try to approve on their behalf.
+- Only a person can approve a stopped action: by answering the approval question you send with AskUserQuestion (exactly as the refusal gives it, with no answers filled in), or in their own terminal with `nodaris-harness approve HASH`. Never answer it or approve it on their behalf.
 
 ## Part 2: working on this repository
 

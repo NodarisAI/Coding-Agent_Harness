@@ -70,7 +70,7 @@ def test_prohibited(cmd, rule):
 
 @pytest.mark.parametrize("cmd,rule", [
     ("git push origin feature/intake", "C-PUSH"),
-    ("gh pr create --fill", "C-PUBLISH"),
+    ("gh pr create --fill", "C-COLLAB"),
     ("npm publish", "C-PUBLISH"),
     ("gcloud run deploy api --source .", "C-DEPLOY"),
     ("kubectl apply -f deploy.yaml", "C-DEPLOY"),

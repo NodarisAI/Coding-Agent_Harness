@@ -1,8 +1,10 @@
 """One process per hook event: guards, rules of engagement, redaction, the v2 pipeline, memory and the recorder.
 
-Order for a tool call about to run: the secret and destructive-command guards, then the policy classes. A prohibited
-call is refused with the rule and the reason. A consequential call runs only with a person's one-time approval of
-that exact call; without one it is refused with the command the person runs to approve it. Everything else runs.
+Order for a tool call about to run: the secret and destructive-command guards, the branch rule, then the policy
+classes. A call any of them stops does not run; it is refused with every reason and two ways for the person to allow
+it once: answering the approval question the agent asks in Claude Code, or `nodaris-harness approve` in their own
+terminal. The harness belongs to the person, so every stop can be overridden with their consent (Varun, 2026-09-30);
+only the rules that protect the approval mechanism itself need the terminal. Everything else runs.
 
 The engine never refuses ordinary work, and it never fails closed on its own bugs for routine calls: an internal
 error in a pipeline step is recorded and the call proceeds, except for the guards and the policy, whose errors refuse
@@ -51,11 +53,25 @@ def _context_of(out):
     return ((_json(out).get("hookSpecificOutput") or {}).get("additionalContext") or "").strip()
 
 
-def _approval_text(decision, ev):
-    msg = (f"This action needs a person's approval under the rules of engagement ({decision.rule_id}: {decision.why}) "
-           f"It has not run. Ask the person to approve it in their own terminal with:\n\n"
-           f"    {CLI} approve {decision.action_hash}\n\n"
-           f"then repeat exactly the same call. Any change to the call needs a new approval, and an approval is used once.")
+# Claude Code permission modes that show a permission dialog. bypassPermissions and dontAsk never do.
+PROMPTING_MODES = ("default", "acceptEdits", "plan", "auto")
+
+
+def _approval_text(decision, ev, rec=None):
+    msg = f"This action did not run. The harness stopped it ({decision.rule_id}): {decision.why} "
+    if rec and rec.get("question") and ev.get("host") == "claude" and not ev.get("agent_id"):
+        msg += ("The person can still allow it. Ask them now with the AskUserQuestion tool, sending exactly this input "
+                "and leaving the answers empty:\n\n" + json.dumps(policy.consent_options(rec)) + "\n\n"
+                "If they allow it, repeat exactly the same call. They can also approve it in their own terminal with:")
+    else:
+        msg += "Ask the person to approve it in their own terminal with:"
+    msg += (f"\n\n    {CLI} approve {decision.action_hash}\n\n"
+            f"then repeat exactly the same call. Any change to the call needs a new approval, and an approval is used once.")
+    if decision.terminal_only:
+        msg += " This rule protects the approval mechanism itself, so only the terminal can approve it."
+    if decision.grantable:
+        msg += (" At that prompt the person can also type session to allow this kind of action in this repository for "
+                "the rest of the session.")
     if decision.rule_id in ("C-PUSH", "C-PUBLISH", "C-DEPLOY"):
         msg += " Review state: " + gates.review_status(ev.get("cwd") or ".")["text"]
     if decision.rule_id == "C-PHI-SOURCE":
@@ -117,7 +133,10 @@ def _pre_tool(ev):
             return capsule.before_launch(ev)
         except Exception:  # noqa: BLE001  the capsule is guidance; a broken one must not stop the launch
             return {"decision": "allow"}
+    if ev["tool_name"] == "AskUserQuestion":
+        return _approval_question(ev)
     payload = events.claude_payload(ev)
+    stops = []   # (rule, why) for every check that stopped this call
     for name, tools in GUARDS:
         if ev["tool_name"] in tools:
             res = _run(GUARDS_DIR, name, payload, ("--mode", "claude"))
@@ -127,27 +146,49 @@ def _pre_tool(ev):
                         "reason": f"The {name[:-3]} check could not run, so this call did not run. Run `{CLI} doctor --host claude`."}
             if res[0] == 2:
                 why = (_json(res[1]).get("hookSpecificOutput") or {}).get("permissionDecisionReason") or res[2].strip()
-                return {"decision": "deny", "rule": name.replace(".py", ""), "reason": why}
+                stops.append((name.replace(".py", ""), why))
     if ev["tool_name"] in EDIT_TOOLS and _setting("branch_rule", True):
         try:
             why = gates.branch_check(ev)
         except Exception:  # noqa: BLE001
             why = None
         if why:
-            return {"decision": "deny", "rule": "branch-rule", "reason": why}
-    if ev["tool_name"] in ("Bash", "shell", "run_shell_command") and not ev.get("agent_id"):
+            stops.append(("branch-rule", why))
+    if ev["tool_name"] in ("Bash", "shell", "run_shell_command") and not ev.get("agent_id") and not stops:
         _arm_ready(ev)
     pol = policy.load_policy()
     decision = policy.classify(ev["tool_name"], ev.get("tool_input"), ev["cwd"], pol)
-    if decision.cls == "prohibited":
-        return {"decision": "deny", "rule": decision.rule_id,
-                "reason": (f"Refused under the rules of engagement ({decision.rule_id}): {decision.why} An agent never "
-                           f"runs this. If it is really needed, the person does it themselves.")}
-    if decision.cls == "consequential":
-        if policy.consume_approval(decision.action_hash):
-            return {"decision": "allow", "rule": decision.rule_id, "approved": True}
-        policy.write_pending(decision, ev["tool_name"], ev.get("tool_input"), ev["cwd"])
-        return {"decision": "deny", "rule": decision.rule_id, "reason": _approval_text(decision, ev)}
+    if decision.cls == "routine" and not stops:
+        return {"decision": "allow"}
+    if decision.cls != "routine":
+        stops.append((decision.rule_id, decision.why))
+    rule = "+".join(r for r, _ in stops)
+    if policy.consume_approval(decision.action_hash):
+        return {"decision": "allow", "rule": rule, "approved": True}
+    alone = len(stops) == 1 and decision.cls == "consequential"
+    if alone and decision.grantable and policy.has_grant(decision.rule_id, ev.get("session_id"), ev["cwd"]):
+        return {"decision": "allow", "rule": rule, "granted": True}
+    if alone and decision.ask and ev.get("host") == "claude" and ev.get("permission_mode") in PROMPTING_MODES:
+        return {"decision": "ask", "rule": rule,
+                "reason": f"Nodaris harness ({decision.rule_id}): {decision.why} Allow it only if you asked for it."}
+    stopped = policy.Decision(decision.cls if decision.cls != "routine" else "guard", rule,
+                              " ".join(w.strip() for _, w in stops), decision.action_hash,
+                              grantable=alone and decision.grantable, terminal_only=decision.terminal_only)
+    rec = policy.write_pending(stopped, ev["tool_name"], ev.get("tool_input"), ev["cwd"], ev.get("session_id"))
+    return {"decision": "deny", "rule": rule, "reason": _approval_text(stopped, ev, rec)}
+
+
+def _approval_question(ev):
+    """An approval question goes out: refuse it with answers pre-filled, otherwise remember that it went out clean."""
+    ti = ev.get("tool_input") or {}
+    questions = [str(q.get("question") or "") for q in ti.get("questions") or [] if isinstance(q, dict)]
+    if not any(policy.CODE_RE.search(q) for q in questions):
+        return {"decision": "allow"}
+    if ti.get("answers") or ti.get("annotations"):
+        return {"decision": "deny", "rule": "consent-prefilled",
+                "reason": "An approval question must reach the person with no answers filled in. Send it again with "
+                          "only the questions."}
+    policy.mark_asked(ev.get("tool_use_id"), ev.get("session_id"), questions)
     return {"decision": "allow"}
 
 
@@ -190,8 +231,9 @@ def prompt(ev):
         if r.verdict == "refused":
             return {"decision": "block", "rule": "R-DATA-PROMPT",
                     "reason": "This message could not be checked for patient information, so it was not sent. Shorten it or send it in parts."}
-        if r.strong:
-            kinds = ", ".join(f"{k.lower().replace('_', ' ')} ({n})" for k, n in sorted(r.strong.items()))
+        found = r.blocking(text)
+        if found:
+            kinds = ", ".join(f"{k.lower().replace('_', ' ')} ({n})" for k, n in sorted(found.items()))
             return {"decision": "block", "rule": "R-DATA-PROMPT",
                     "reason": (f"This message looks like it contains patient information: {kinds}. It was not sent to the "
                                f"model. Below is the same message with every identifier replaced by a realistic stand-in; "
@@ -237,6 +279,14 @@ def post_tool(ev):
             parts.append(capsule.after_return(ev))
         except Exception:  # noqa: BLE001
             pass
+    if ev["tool_name"] == "AskUserQuestion" and ev["hook_event_name"] == "PostToolUse" and ev.get("host") == "claude":
+        resp = ev.get("tool_response")
+        answers = (resp.get("answers") if isinstance(resp, dict) else None) or (ev.get("tool_input") or {}).get("answers")
+        try:
+            import getpass
+            parts.extend(policy.record_consent(ev.get("tool_use_id"), ev.get("session_id"), answers, getpass.getuser()))
+        except Exception:  # noqa: BLE001  a failed consent record approves nothing; the call stays stopped
+            parts.append("The approval answer could not be recorded, so nothing was approved. Ask again, or approve in the terminal.")
     if ev["tool_name"] == "Skill" and ev["hook_event_name"] == "PostToolUse":
         signals.record(ev["session_id"], "skill", name=str((ev.get("tool_input") or {}).get("skill") or "")[:60])
     if ev["tool_name"] in EDIT_TOOLS and ev["hook_event_name"] == "PostToolUse":
@@ -300,7 +350,7 @@ def handle(ev):
             learner.start_in_background(CLI)
             if ev.get("host") == "claude":
                 from . import monitor, usage
-                monitor.write_link(os.environ.get("NODARIS_PANEL_LINK"), ev.get("transcript_path"), ev["session_id"], ev["cwd"])
+                monitor.write_link(monitor.session_link(), ev.get("transcript_path"), ev["session_id"], ev["cwd"])
                 usage.start_in_background(CLI)
                 learned = "\n\n".join(x for x in (learned, monitor.dashboard_offer(ev, CLI)) if x)
             try:
