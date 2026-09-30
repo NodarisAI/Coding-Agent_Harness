@@ -99,6 +99,7 @@ def uninstall(a, tui, hosts, policy):
         tui.line("%s: %d item(s) removed or restored." % (host, len(rep.get("removed", []))))
         for k in rep.get("kept", []):
             tui.line("  " + k)
+    hosts.unlink_commands()
     return 0
 
 
@@ -181,9 +182,17 @@ def main(argv=None):
             tui.line(p.stdout.rstrip())
 
     if a.dry_run:
+        for link in hosts.link_commands(dry_run=True):
+            tui.line("Would add the command %s." % short(link))
         tui.line("Run the same command without --dry-run to install.")
         return 0
     binp = hosts.bin_path()
+    if "claude" in done:
+        try:
+            for link in hosts.link_commands():
+                tui.line("Added the command %s." % short(link))
+        except OSError as e:
+            tui.line("The nodaris command could not be added to ~/.local/bin (%s); run %s instead." % (e.strerror, binp))
     if settings.get("jev") and done:
         onboard.fetch_jev_key(settings, write=tui.line)
     elif not settings.get("jev") and not a.dry_run:
@@ -203,7 +212,9 @@ def main(argv=None):
     if failed:
         lines.append("The check failed for " + ", ".join(failed) + "; the output is shown above.")
     if "claude" in done:
-        lines += ["", "Start a new Claude Code session to use the harness. Claude Code reads its settings when a session "
+        lines += ["", "Run `nodaris` in a project folder to open Claude Code with the harness and the live token panel "
+                  "beside it. `nodaris --continue` picks up your last conversation; any Claude Code option works.",
+                  "", "Start a new Claude Code session to use the harness. Claude Code reads its settings when a session "
                   "starts, so a session that is already open keeps working without it until you restart it:",
                   "  Command line: exit the session, then run `claude --continue` to pick the same conversation up again.",
                   "  Desktop app: quit the app completely and open it again; your sessions reopen with the harness."]

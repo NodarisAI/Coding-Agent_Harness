@@ -152,6 +152,17 @@ def main(argv=None):
         again = hook(a.python, src, fresh, dict(start, session_id="t2"))
         ok &= step("a machine that skipped onboarding is offered it once", "has not finished onboarding" in first and
                    "has not finished onboarding" not in again)
+        link = os.path.join(home, ".local", "bin", "nodaris")
+        ok &= step("the nodaris command is on the PATH", os.path.realpath(link) == os.path.realpath(os.path.join(src, "bin", "nodaris-harness")))
+        fake = os.path.join(tmp, "fakebin")
+        os.makedirs(fake)
+        with open(os.path.join(fake, "claude"), "w") as fh:
+            fh.write('#!/bin/sh\necho "claude started with: $*"\n')
+        os.chmod(os.path.join(fake, "claude"), 0o755)
+        r = subprocess.run([link, "--continue"], capture_output=True, text=True, timeout=60,
+                           env=dict(env, PATH=fake + os.pathsep + env.get("PATH", "")))
+        ok &= step("nodaris hands the terminal to Claude Code with its options", r.returncode == 0 and
+                   "claude started with: --continue" in r.stdout, (r.stdout + r.stderr)[-300:])
         r = subprocess.run([a.python, os.path.join(src, "bin", "nodaris-harness"), "doctor", "--host", "claude"],
                            capture_output=True, text=True, env=env, timeout=600)
         ok &= step("doctor passes", r.returncode == 0, r.stdout[-400:])
@@ -160,6 +171,7 @@ def main(argv=None):
         ok &= step("uninstall", r.returncode == 0, (r.stdout + r.stderr)[-300:])
         ok &= step("the person's settings file is back byte for byte", open(own, "rb").read() == before)
         ok &= step("skills removed", not os.path.isdir(os.path.join(skills, "spec-first")))
+        ok &= step("the nodaris command removed", not os.path.lexists(link))
         ok &= nodaris_member(a, src, tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

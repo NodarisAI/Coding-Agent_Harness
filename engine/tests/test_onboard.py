@@ -221,7 +221,10 @@ def snapshot(d):
 def test_install_dry_run_yes_answers_writes_nothing(tmp_path):
     user = tmp_path / "fresh"
     user.mkdir()
-    env = dict(os.environ, HOME=str(user), NODARIS_HARNESS_HOME=str(user / ".nodaris-harness"), NODARIS_HARNESS_NO_BG="1")
+    # Apple's /usr/bin/python3 caches bytecode under ~/Library/Caches/com.apple.python; that is the interpreter's
+    # write, not the installer's, so it is switched off here.
+    env = dict(os.environ, HOME=str(user), NODARIS_HARNESS_HOME=str(user / ".nodaris-harness"), NODARIS_HARNESS_NO_BG="1",
+               PYTHONDONTWRITEBYTECODE="1")
     before = snapshot(user)
     p = subprocess.run([sys.executable, os.path.join(ROOT, "install.py"), "--dry-run", "--yes", "--answers",
                         json.dumps(dict(BASE, hosts=["claude", "codex", "gemini", "opencode", "cursor"]))],

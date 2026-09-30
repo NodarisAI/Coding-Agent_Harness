@@ -5,7 +5,7 @@ sleeping when the output is not a terminal, NO_COLOR is set, TERM is dumb or NOD
 24-bit when COLORTERM says truecolor and 256-colour otherwise. The cursor and the terminal mode are restored on
 every exit path: normal return, Ctrl-C, an exception and interpreter exit.
 """
-import atexit, colorsys, contextlib, os, re, select, shutil, sys, textwrap, threading, time
+import atexit, colorsys, contextlib, math, os, re, select, shutil, sys, textwrap, threading, time
 
 ACCENT = (45, 212, 191)
 MUTED = (140, 150, 160)
@@ -118,8 +118,21 @@ def hue_rgb(h, s=0.62, v=1.0):
     return int(r * 255), int(g * 255), int(b * 255)
 
 
+# The Nodaris teal ramp (NoRCON design system, dark theme): teal-700 ink, brand teal, teal highlight.
+TEAL_STOPS = ((6, 122, 104), (15, 212, 180), (94, 234, 212))
+
+
+def teal_rgb(t):
+    """A colour on the teal ramp; t wraps, and the ramp runs dark to light and back so a moving sweep never jumps."""
+    u = 0.5 - 0.5 * math.cos(2 * math.pi * (t % 1.0))
+    seg = min(1, int(u * 2))
+    f = u * 2 - seg
+    a, b = TEAL_STOPS[seg], TEAL_STOPS[seg + 1]
+    return tuple(int(a[k] + (b[k] - a[k]) * f) for k in range(3))
+
+
 def gradient(text, phase=0.0, stream=None, span=0.85, shimmer=None):
-    """Colour each visible character along a smooth hue sweep. shimmer is a column that glows brighter."""
+    """Colour each visible character along the teal ramp. shimmer is a column that glows brighter."""
     mode = color_mode(stream)
     if mode == "none":
         return text
@@ -129,10 +142,10 @@ def gradient(text, phase=0.0, stream=None, span=0.85, shimmer=None):
         if ch == " ":
             out.append(ch)
             continue
-        r, g, b = hue_rgb(phase + span * i / n)
+        r, g, b = teal_rgb(phase + span * i / n)
         if shimmer is not None:
             glow = max(0.0, 1.0 - abs(i - shimmer) / 5.0)
-            r, g, b = (int(c + (255 - c) * glow * 0.75) for c in (r, g, b))
+            r, g, b = (int(c + (hi - c) * glow * 0.8) for c, hi in zip((r, g, b), (190, 255, 240)))
         code = fg((r, g, b), mode=mode)
         if code != last:
             out.append(code)
@@ -264,7 +277,7 @@ def banner_lines(cols=None, unicode=True):
 
 
 def splash(stream=None, duration=1.2, tagline=TAGLINE):
-    """The banner with a moving rainbow shimmer, under two seconds; any key skips it. Plain text when motion is off."""
+    """The banner with a moving teal shimmer, under two seconds; any key skips it. Plain text when motion is off."""
     s = _out(stream)
     cols = width(s)
     if plain(s):

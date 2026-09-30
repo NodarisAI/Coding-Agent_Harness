@@ -74,7 +74,7 @@ def line(payload, now=None, unicode=True, colour=None):
     speed = 2 + 8 * h
     glyph = frames[int(now * speed) % len(frames)] if burn > 0 else (frames[0])
     if colour:
-        glyph = f"\x1b[38;5;{202 if h > 0.66 else 208 if h > 0.33 else 214}m{glyph}\x1b[0m"
+        glyph = f"\x1b[38;5;{86 if h > 0.66 else 43 if h > 0.33 else 36}m{glyph}\x1b[0m"   # the teal ramp, lighter as it burns faster
         pct = f"{int(used * 100)}%"
         code = {"ok": 37, "warn": 214, "high": 196}[monitor.level(used)]
         pct = f"\x1b[38;5;{code}m{pct}\x1b[0m"

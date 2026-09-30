@@ -1,5 +1,8 @@
 """nodaris-harness: one command for every agent.
 
+  nodaris [claude arguments]                           Claude Code with the harness and the live token panel beside it
+  nodaris start [claude arguments]                     the same; installed as both nodaris and nodaris-harness
+
   nodaris-harness install --host claude|codex|gemini|cursor|opencode|git [--dry-run] [--config-dir D] [--project P]
   nodaris-harness uninstall --host H
   nodaris-harness doctor --host H [--live]
@@ -517,6 +520,11 @@ def cmd_setup_check(a):
 
 
 def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    # No command, `start`, or Claude Code's own flags: open Claude Code with the harness and its token panel.
+    if not argv or argv[0] == "start" or (argv[0].startswith("-") and argv[0] not in ("-h", "--help")):
+        from . import launch
+        return launch.start(argv[1:] if argv and argv[0] == "start" else argv)
     ap = argparse.ArgumentParser(prog="nodaris-harness", description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("hook"); s.add_argument("--host", required=True, choices=list(hosts.LEVEL)); s.add_argument("--event")
