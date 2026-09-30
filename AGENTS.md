@@ -49,4 +49,10 @@ Rules while installing:
 - **Guards and policy are sensitive.** Changes to `rules/policy.json`, `packs/core/vendor/guards/`, `engine/nodaris_harness/policy.py` or the approval code need an explicit review by a maintainer and a policy version bump.
 - **Outside work is rebuilt, not vendored.** Follow the `study-and-rebuild` skill and keep licence credit.
 - **Product text** (installer screens, doctor output, errors, docs) follows `packs/core/skills/plain-copy/SKILL.md`: professional English, sentence case, "click" not "press".
+- **Every change ends coherent.** Before a change is called done: `CHANGELOG.md`, `README.md` and the affected
+  docs describe it; the version in `engine/nodaris_harness/__init__.py` moves with a release; and the public explainer
+  page (the Nodaris harness artifact) is updated to match. A feature that exists in code but not in those places is
+  not finished.
+- **Decision model.** Jev (OpenRouter, Varun's key) and Laya (local, `docs/LAYA.md`) share one client in `jev.py`.
+  A change to the questions, the privacy path or the answer parser applies to both and is tested for both.
 - The rules the harness gives every agent are in `rules/RULES.md`; they apply here too.

@@ -66,7 +66,14 @@ Claude Code reads its settings when a session starts. A session that was already
 
 To confirm it is active, start a session and ask: "Run `cat .env`". The harness refuses the read and explains why.
 
-## 5. Add the git hooks to each repository you push from
+## 5. Start working
+
+- **Command line:** run `nodaris` in your project folder instead of `claude`. It opens Claude Code with the harness and the live token panel beside it. Any Claude Code option works: `nodaris --continue`, `nodaris --resume`, `nodaris -p "question"`. The panel needs tmux (`brew install tmux` on a Mac); without it, Claude Code still starts and the panel opens in a second window.
+- **Desktop app:** open a session as usual. The harness runs in every session, and at the end of each reply a line shows the tokens used: for the request, for the session (with cache re-reads shown separately) and for the day across all your sessions. For the full live panel, open a terminal in the same project folder and run `nodaris-harness watch`.
+
+The installer adds the `nodaris` and `nodaris-harness` commands to `~/.local/bin`. If your terminal says the command is not found, add that folder to your `PATH` (for zsh: `echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc`, then open a new terminal).
+
+## 6. Add the git hooks to each repository you push from
 
 The harness already stops the agent from pushing to protected branches. The git hooks also check the commits and pushes you make yourself, for secrets, patient data and AI-authorship marks:
 
@@ -75,7 +82,7 @@ cd ~/path/to/the/repository
 ~/.nodaris-harness-src/bin/nodaris-harness install --host git --project .
 ```
 
-## 6. Check everything
+## 7. Check everything
 
 ```bash
 ~/.nodaris-harness-src/bin/nodaris-harness setup-check
@@ -97,12 +104,14 @@ Every line should read `ok`. Each `todo` line shows the command that fixes it.
 |---|---|
 | `nodaris-harness setup-check` | What you still need to set up yourself |
 | `nodaris-harness doctor --host claude` | Proves the install works |
-| `nodaris-harness watch --split` | A live panel: tokens spent, helper agents, recalled lessons and files touched |
+| `nodaris` | Claude Code with the harness and the live token panel beside it |
+| `nodaris-harness watch` | The live panel on its own, for the desktop app or a second terminal |
+| `nodaris-harness usage` | Tokens used today and over the last seven days, across every session |
 | `nodaris-harness jev status` | Whether Jev is on, whether the key is present, and what it has spent today |
 | `nodaris-harness jev off` | Stops sending messages to Jev; `jev on` starts again |
 | `nodaris-harness receipt` | What the last session proved |
 
-Put `~/.nodaris-harness-src/bin` on your `PATH` to type `nodaris-harness` without the folder.
+To turn off the token line at the end of each reply, set `"turn_summary": false` in `~/.nodaris-harness/settings.json`.
 
 ## Updating and removing
 

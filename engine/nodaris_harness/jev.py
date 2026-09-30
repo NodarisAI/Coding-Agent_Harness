@@ -10,6 +10,12 @@ anything leaves the machine. Jev is best effort: with no key, no network or a sp
 
 The key is the Nodaris team key, fetched once from AWS Secrets Manager with the person's own AWS login
 (`nodaris-harness jev fetch-key`) and kept in a file only they can read. It is never printed or committed.
+
+Laya is the local alternative for people without a Jev key: an Apache-2.0 decision model (github.com/NandhaKishorM/laya)
+whose server, `laya-serve`, speaks Jev's wire protocol (`POST /v1/systemone`, the same answers). With the `decider`
+setting at "laya" the same questions go to that server on this machine: no key, no spend, loopback addresses only,
+and the same privacy checks first. The `decider` setting is "jev", "laya" or "off"; without it, Jev runs for people
+whose onboarding turned it on and nothing runs for anyone else.
 """
 import datetime, http.client, json, os, re, subprocess, threading, time
 from urllib.parse import urlsplit
@@ -23,6 +29,9 @@ DAILY_CAP_USD = 0.50
 BUDGET_S = 3.5
 ATTEMPT_S = 1.6
 RETRY_STATUS = {408, 429, 500, 502, 503, 504, 524, 529}
+LAYA_URL = "http://127.0.0.1:8000/v1/systemone"
+LAYA_BUDGET_S = 1.2
+LOOPBACK = ("127.0.0.1", "localhost", "::1")
 MIN_WORDS, MAX_CHARS = 6, 16000
 
 TYPES = {
@@ -152,7 +161,8 @@ def fetch_key(profile=None, secret_id=SECRET_ID, runner=subprocess.run):
     tmp = path + ".tmp"
     try:
         os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
-        os.chmod(os.path.dirname(path), 0o700)
+        # Owner-only (0700) folder for the key: it removes group and other access, never adds it.
+        os.chmod(os.path.dirname(path), 0o700)  # nosemgrep
         if os.path.lexists(tmp):
             os.remove(tmp)
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
@@ -174,11 +184,27 @@ def fetch_key(profile=None, secret_id=SECRET_ID, runner=subprocess.run):
     return True, "The team key is saved in " + path + ", readable only by you."
 
 
+def probe(url=None):
+    """Ask Laya's server one fixed synthetic question: (answered, milliseconds). Nothing personal is sent."""
+    started = time.monotonic()
+    url = laya_endpoint(url)
+    if not url:
+        return False, 0
+    try:
+        data = _post(url, {"state": {"message": "Fix the failing unit test in the export module.",
+                                     "first_message_in_session": True}, "questions": questions(True)}, None, LAYA_BUDGET_S)
+        ok = bool(parse(data, questions(True)))
+    except Exception:  # noqa: BLE001  a status check reports, it never raises
+        ok = False
+    return ok, int((time.monotonic() - started) * 1000)
+
+
 def status():
     key = _key()
     spent = _spent_today()
     return {"enabled": not is_off() and _chosen(), "key": bool(key), "key_path": key_path(),
-            "key_refused": os.path.exists(_auth_flag()), "spent_today_usd": round(spent, 4), "daily_cap_usd": DAILY_CAP_USD}
+            "key_refused": os.path.exists(_auth_flag()), "spent_today_usd": round(spent, 4), "daily_cap_usd": DAILY_CAP_USD,
+            "decider": backend(), "laya_url": laya_endpoint()}
 
 
 def _ledger():
@@ -191,16 +217,18 @@ def _spent_today():
         with open(_ledger()) as fh:
             for ln in fh:
                 try:
-                    total += float(json.loads(ln).get("cost") or 0)
-                except (ValueError, TypeError):
+                    rec = json.loads(ln)
+                    if rec.get("by", "jev") == "jev":
+                        total += float(rec.get("cost") or 0)
+                except (ValueError, TypeError, AttributeError):
                     pass
     except OSError:
         pass
     return total
 
 
-def _recent_failures(window=180):
-    """Failures in a row at the end of today's ledger, counting only those inside the window."""
+def _recent_failures(by="jev", window=180):
+    """Failures in a row at the end of today's ledger for one backend, counting only those inside the window."""
     now, recs = time.time(), []
     try:
         with open(_ledger()) as fh:
@@ -213,6 +241,8 @@ def _recent_failures(window=180):
         pass
     n = 0
     for rec in reversed(recs):
+        if not isinstance(rec, dict) or rec.get("by", "jev") != by:
+            continue
         if rec.get("ok") or now - float(rec.get("t") or 0) >= window:
             break
         n += 1
@@ -267,8 +297,10 @@ def _post(url, payload, key, timeout):
     cls = http.client.HTTPSConnection if u.scheme == "https" else http.client.HTTPConnection
     conn = cls(u.hostname, u.port, timeout=max(0.2, timeout))
     try:
-        conn.request("POST", u.path or "/", body=json.dumps(payload).encode(), headers={
-            "Authorization": "Bearer " + key, "Content-Type": "application/json", "X-Title": "nodaris-harness"})
+        headers = {"Content-Type": "application/json", "X-Title": "nodaris-harness"}
+        if key:
+            headers["Authorization"] = "Bearer " + key
+        conn.request("POST", u.path or "/", body=json.dumps(payload).encode(), headers=headers)
         resp = conn.getresponse()
         data = resp.read()
         if resp.status != 200:
@@ -319,31 +351,57 @@ def _endpoint(url=None):
     return URL
 
 
-def ask(text, first, key=None, url=None):
-    """Jev's answers for a message that already passed the privacy checks, or None."""
-    key = key or _key()
-    if not key:
+def laya_endpoint(url=None):
+    """Laya's server address: the NODARIS_LAYA_URL override, the `laya_url` setting or the default, and only when it
+    is on this machine. Anything else is None, so a message is never sent to another host as a 'local' model."""
+    url = url or os.environ.get("NODARIS_LAYA_URL") or _settings().get("laya_url") or LAYA_URL
+    try:
+        u = urlsplit(str(url))
+        ok = u.scheme in ("http", "https") and u.hostname in LOOPBACK and u.port is not None
+    except ValueError:
         return None
+    return str(url) if ok else None
+
+
+def backend():
+    """Which decision model reads prompts: the `decider` setting when set, else Jev for people who chose it."""
+    d = _settings().get("decider")
+    if d in ("jev", "laya", "off"):
+        return d
+    return "jev" if _chosen() else "off"
+
+
+def ask(text, first, key=None, url=None, by="jev"):
+    """The decision model's answers for a message that already passed the privacy checks, or None."""
     qs = questions(first)
-    body = {"model": MODEL, "state": {"message": text, "first_message_in_session": bool(first)}, "questions": qs}
+    state = {"message": text, "first_message_in_session": bool(first)}
+    if by == "laya":
+        key, url, budget = None, laya_endpoint(url), LAYA_BUDGET_S
+        if not url:
+            return None
+        body = {"state": state, "questions": qs}
+    else:
+        key = key or _key()
+        if not key:
+            return None
+        body, url, budget = {"model": MODEL, "state": state, "questions": qs}, _endpoint(url), BUDGET_S
     raw = json.dumps(body)
-    if key in raw:
+    if key and key in raw:
         return None
-    url = _endpoint(url)
     started = time.monotonic()
     box = {}
 
     def call():
         attempts, err = 0, "no time"
-        while time.monotonic() < started + BUDGET_S - 0.3 and attempts < 2:
+        while time.monotonic() < started + budget - 0.3 and attempts < 2:
             attempts += 1
             try:
-                data = _post(url, body, key, min(ATTEMPT_S, started + BUDGET_S - time.monotonic()))
+                data = _post(url, body, key, min(ATTEMPT_S, started + budget - time.monotonic()))
                 box["ans"], box["cost"] = parse(data, qs), _cost(data, len(raw))
                 return
             except _HttpFail as exc:
                 err = "http %s" % exc.status
-                if exc.status in (401, 402, 403):
+                if exc.status in (401, 402, 403) and by == "jev":
                     box["refused"] = True
                 if exc.status not in RETRY_STATUS or exc.status == 429:
                     break
@@ -357,22 +415,23 @@ def ask(text, first, key=None, url=None):
     # The whole call, DNS included, runs in a thread the prompt waits on for at most the budget.
     t = threading.Thread(target=call, daemon=True)
     t.start()
-    t.join(BUDGET_S)
+    t.join(budget)
     ms = int((time.monotonic() - started) * 1000)
     if "ans" in box:
-        _log({"t": time.time(), "ok": True, "ms": ms, "cost": box["cost"]})
+        _log({"t": time.time(), "by": by, "ok": True, "ms": ms, "cost": box["cost"] if by == "jev" else 0.0})
         return box["ans"]
     if box.get("refused"):
         try:
             open(_auth_flag(), "w").close()
         except OSError:
             pass
-    _log({"t": time.time(), "ok": False, "err": box.get("err", "timeout"), "ms": ms, "cost": len(raw) / 4 / 1e6})
+    _log({"t": time.time(), "by": by, "ok": False, "err": box.get("err", "timeout"), "ms": ms,
+          "cost": len(raw) / 4 / 1e6 if by == "jev" else 0.0})
     return None
 
 
-def lines(ans):
-    """The context Jev adds: a route line and a reply-shape line, each only when Jev is sure enough."""
+def lines(ans, name="Jev"):
+    """The context the decision model adds: a route line and a reply-shape line, each only when it is sure enough."""
     out = []
     if not ans:
         return out
@@ -388,17 +447,22 @@ def lines(ans):
         if p >= 0.4 and shape in SHAPE_TEXT:
             out.append("Reply shape: " + SHAPE_TEXT[shape])
     if out:
-        out.insert(0, "Jev's reading of the message above (the message and conversation win on any conflict):")
+        out.insert(0, name + "'s reading of the message above (the message and conversation win on any conflict):")
     return out
+
+
+def _settings():
+    try:
+        with open(os.path.join(policy.home(), "settings.json")) as fh:
+            s = json.load(fh)
+        return s if isinstance(s, dict) else {}
+    except (OSError, ValueError):
+        return {}
 
 
 def _chosen():
     """Jev runs only for a person whose onboarding turned it on."""
-    try:
-        with open(os.path.join(policy.home(), "settings.json")) as fh:
-            return json.load(fh).get("jev") is True
-    except (OSError, ValueError, AttributeError):
-        return False
+    return _settings().get("jev") is True
 
 
 _NAME_PAIR = re.compile(r"\b[A-Z][a-z'\-]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z'\-]+\b")
@@ -414,12 +478,16 @@ def for_prompt(ev, text, marker=None):
     """The context lines for one prompt, or an empty string. Never raises and never sends unchecked text.
     marker: a per-session file that records whether Jev has seen a message in this session."""
     try:
-        if is_off() or not _chosen() or ev.get("agent_id") or not text:
+        by = backend()
+        if by == "off" or ev.get("agent_id") or not text:
             return ""
         t = text.strip()
         if t.startswith(("/", "!")) or len(t) > MAX_CHARS or len(t.split()) < MIN_WORDS:
             return ""
-        if not _key() or os.path.exists(_auth_flag()) or _spent_today() >= DAILY_CAP_USD or _recent_failures() >= 2:
+        if by == "jev" and (is_off() or not _key() or os.path.exists(_auth_flag()) or _spent_today() >= DAILY_CAP_USD
+                            or _recent_failures("jev") >= 2):
+            return ""
+        if by == "laya" and (not laya_endpoint() or _recent_failures("laya") >= 2):
             return ""
         r = redact.redact_text(t)
         if r.verdict == "refused" or r.strong:
@@ -431,6 +499,6 @@ def for_prompt(ev, text, marker=None):
                 open(marker, "w").close()
             except OSError:
                 pass
-        return "\n".join(lines(ask(safe, first)))
+        return "\n".join(lines(ask(safe, first, by=by), "Laya" if by == "laya" else "Jev"))
     except Exception:  # noqa: BLE001
         return ""

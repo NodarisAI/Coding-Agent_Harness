@@ -9,8 +9,12 @@ unchanged (the harness hooks are already in its settings); this only arranges th
   - without tmux: Claude Code runs here and the panel is offered in a second window (a new Terminal or iTerm window on
     macOS);
   - print mode (-p), --no-panel, or output that is not a terminal: Claude Code alone.
+
+The panel follows exactly the session this command starts: Claude Code runs with NODARIS_PANEL_LINK set, the
+harness's SessionStart hook records that session's transcript under the link, and the panel reads it (see
+monitor.write_link). Another session open in the same folder, such as the desktop app, never shows in this panel.
 """
-import os, shlex, shutil, subprocess, sys
+import os, secrets, shlex, shutil, subprocess, sys
 
 from . import hosts
 
@@ -24,12 +28,15 @@ class LaunchError(Exception):
     pass
 
 
-def panel_command():
-    return " ".join(shlex.quote(x) for x in (sys.executable, hosts.bin_path(), "watch", "--host", "claude"))
+LINK_ENV = "NODARIS_PANEL_LINK"
 
 
-def plan(args, env=None, which=shutil.which, cwd=None, tty=True, pid=None):
-    """The steps that start Claude Code: a list of (kind, argv) where kind is run, exec or note."""
+def panel_command(link):
+    return " ".join(shlex.quote(x) for x in (sys.executable, hosts.bin_path(), "watch", "--host", "claude", "--link", link))
+
+
+def plan(args, env=None, which=shutil.which, cwd=None, tty=True, pid=None, link=None):
+    """The steps that start Claude Code: a list of (kind, argv) where kind is setenv, run, exec or note."""
     env = os.environ if env is None else env
     claude = which("claude")
     if not claude:
@@ -39,18 +46,21 @@ def plan(args, env=None, which=shutil.which, cwd=None, tty=True, pid=None):
     run_claude = [claude] + args
     if no_panel or not tty or any(a in PRINT_FLAGS for a in args):
         return [("exec", run_claude)]
-    panel = panel_command()
+    link = link or secrets.token_hex(8)
+    panel = panel_command(link)
+    setenv = ("setenv", [LINK_ENV, link])
     if env.get("TMUX") and which("tmux"):
-        return [("run", ["tmux", "split-window", "-h", "-l", PANEL_WIDTH, "-d", panel]), ("exec", run_claude)]
+        return [setenv, ("run", ["tmux", "split-window", "-h", "-l", PANEL_WIDTH, "-d", panel]), ("exec", run_claude)]
     if which("tmux"):
         name = "nodaris-%d" % (pid or os.getpid())
-        inner = " ".join(shlex.quote(x) for x in run_claude) + " ; tmux kill-session -t " + name
+        inner = " ".join(shlex.quote(x) for x in ["env", f"{LINK_ENV}={link}"] + run_claude) + " ; tmux kill-session -t " + name
         return [("exec", ["tmux", "new-session", "-s", name, "-c", cwd or os.getcwd(), inner,
                           ";", "set-option", "-t", name, "mouse", "on",
                           ";", "set-option", "-t", name, "status", "off",
                           ";", "split-window", "-t", name, "-h", "-l", PANEL_WIDTH, "-d", panel])]
-    return [("note", ["The token panel opens beside Claude Code when tmux is installed (brew install tmux). "
-                      "Until then, run this in a second window: " + panel]),
+    return [setenv,
+            ("note", ["The token panel opens beside Claude Code when tmux is installed (brew install tmux). "
+                      "Until then, run this in a second window: " + panel, link]),
             ("exec", run_claude)]
 
 
@@ -69,10 +79,12 @@ def start(args, out=None):
     if tty and not any(a in PRINT_FLAGS for a in args):
         tui.splash(out, duration=0.9, tagline="Claude Code with the Nodaris harness")
     for kind, argv in steps:
-        if kind == "note":
+        if kind == "setenv":
+            os.environ[argv[0]] = argv[1]
+        elif kind == "note":
             opened = sys.platform == "darwin" and os.environ.get("TERM_PROGRAM") in ("Apple_Terminal", "iTerm.app")
             if opened:
-                monitor.split(type("A", (), {"open": True, "session": None})(), out)
+                monitor.split(type("A", (), {"open": True, "session": None, "link": argv[1]})(), out)
             else:
                 out.write(argv[0] + "\n")
         elif kind == "run":

@@ -95,6 +95,7 @@ def test_colour_modes(monkeypatch):
 
 def test_splash_animates_briefly_in_a_terminal(monkeypatch):
     monkeypatch.setenv("COLORTERM", "truecolor")
+    monkeypatch.setenv("COLUMNS", "100")                      # a terminal that reports its width
     monkeypatch.setattr(sys, "stdin", io.StringIO(""))
     s = FakeTTY()
     start = time.time()
@@ -132,3 +133,15 @@ def test_gradient_stays_in_the_teal_family(monkeypatch):
         for r, gg, b in (tuple(map(int, m)) for m in re.findall(r"38;2;(\d+);(\d+);(\d+)m", g)):
             assert gg > r + 60 and b > r + 50, (r, gg, b)       # green and blue lead: teal, never red, orange or purple
             assert abs(gg - b) < 60, (r, gg, b)
+
+
+def test_splash_prints_once_when_the_terminal_hides_its_width(monkeypatch):
+    # Some embedded terminals report 0 columns; a guessed width can wrap the banner, and redrawing a wrapped banner in
+    # place stacks copies down the screen. With the width unknown the banner is printed once and never redrawn.
+    monkeypatch.setattr(tui.shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((fallback[0], 24)))
+    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+    s = FakeTTY()
+    tui.splash(s)
+    out = s.getvalue()
+    assert not re.search(r"\x1b\[\d+F", out)
+    assert tui.strip(out).count("Coding-agent harness") == 1

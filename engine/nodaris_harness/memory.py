@@ -6,10 +6,10 @@ Three libraries, all JSON Lines:
 - the team's, read-only, refreshed from the memory vault by team sync: <harness home>/lessons/team.jsonl
 
 A lesson has a trigger (keywords, file globs) and an instruction (when, do, don't, why). Recall runs on every prompt
-(keyword overlap with the request) and on every file edit (glob match), and each lesson is shown at most once per
+(word overlap with the request, rarer words weighted higher; see match()) and on every file edit (glob match), and each lesson is shown at most once per
 session. Lessons never hold patient information: text is redacted before it is stored.
 """
-import fnmatch, hashlib, json, os, re, time
+import fnmatch, hashlib, json, math, os, re, time
 
 from . import redact
 from .policy import home
@@ -95,7 +95,7 @@ def _mark(session_id, ids):
     return fresh
 
 
-def _format(lessons, lead):
+def _format(lessons, lead, matched=None):
     lines = [lead]
     for item in lessons:
         line = f"- When {item['when']}: {item['do']}"
@@ -103,23 +103,58 @@ def _format(lessons, lead):
             line += f" Don't: {item['dont']}"
         if item.get("why"):
             line += f" Why: {item['why']}"
+        if matched and matched.get(item["id"]):
+            line += f" (matched: {', '.join(matched[item['id']][:4])})"
         lines.append(line)
     return "\n".join(lines)
 
 
+def _raw_words(text):
+    """Every word, short ones and numbers included, for matching a lesson's own keywords (835, x12, cpt)."""
+    return set(re.findall(r"[a-z0-9][a-z0-9_.+-]*", (text or "").lower()))
+
+
+def match(prompt, lessons):
+    """[(score, lesson, matched words)] for the lessons that fit the request, best first.
+
+    A lesson fits when at least two of its words appear in the request and at least one of them is one of its
+    keywords or describes its situation (the "when"), so a lesson is never pulled in by its instruction text alone.
+    Words that appear in many lessons count for less (inverse document frequency), and when the library is large a
+    lesson matched only by such common words is left out."""
+    words, raw = _tokens(prompt), _raw_words(prompt)
+    docs = []
+    for item in lessons:
+        when = _tokens(item.get("when", ""))
+        keys = {str(k).lower() for k in item.get("keywords", []) if k}
+        docs.append((item, when, keys, when | _tokens(item.get("do", "")) | keys))
+    n = len(docs) or 1
+    df = {}
+    for _, _, _, terms in docs:
+        for w in terms:
+            df[w] = df.get(w, 0) + 1
+    idf = lambda w: math.log(1 + n / (1.0 + df.get(w, 0)))  # noqa: E731
+    common = max(2, n // 5)
+    out = []
+    for item, when, keys, terms in docs:
+        hit = (words & terms) | (raw & keys)
+        if len(hit) < 2 or not (hit & (keys | when)):
+            continue
+        if n >= 10 and all(df.get(w, 0) > common for w in hit):
+            continue
+        score = sum(idf(w) for w in hit) + sum(idf(w) for w in hit & keys)
+        out.append((score, item, sorted(hit, key=lambda w: -idf(w))))
+    out.sort(key=lambda x: -x[0])
+    return out
+
+
 def recall_for_prompt(session_id, cwd, prompt, k=3):
-    words = _tokens(prompt)
-    scored = []
-    for item in load(cwd):
-        score = len(words & (_tokens(" ".join([item.get("when", ""), item.get("do", "")])) | set(item.get("keywords", []))))
-        score += 2 * len(words & set(item.get("keywords", [])))
-        if score >= 3:
-            scored.append((score, item))
-    scored.sort(key=lambda x: -x[0])
-    picked = [item for _, item in scored[:k]]
-    fresh = set(_mark(session_id, [item["id"] for item in picked]))
-    picked = [item for item in picked if item["id"] in fresh]
-    return _format(picked, "Lessons recorded from earlier work that match this request:") if picked else ""
+    found = match(prompt, load(cwd))[:k]
+    fresh = set(_mark(session_id, [item["id"] for _, item, _ in found]))
+    picked = [(item, hit) for _, item, hit in found if item["id"] in fresh]
+    if not picked:
+        return ""
+    return _format([item for item, _ in picked], "Lessons recorded from earlier work that match this request:",
+                   {item["id"]: hit for item, hit in picked})
 
 
 def recall_for_file(session_id, cwd, path):

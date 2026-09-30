@@ -1,6 +1,21 @@
 # Changelog
 
-## Unreleased
+## 1.1.0
+
+- Laya, a local decision model, can read prompts instead of Jev for people without a Jev key: `nodaris-harness laya on|off|status` and the `decider` setting (`jev`, `laya`, `off`). It is reached only on this machine, needs no key, costs nothing and gets the same privacy checks as Jev. `scripts/laya_dataset.py` and `scripts/laya_eval.py` build its training data from Jev's past answers and measure agreement against a gate. See docs/LAYA.md; the trained model is not shipped yet.
+- "This session" in the panel, the status line and the end-of-reply line now counts from the moment the session was last opened (a start, a resume or /clear, as Claude Code records it in the transcript). A conversation resumed over several days used to show its whole history as "this session"; that total now appears on its own line, labelled "Whole conversation" with its start date. Subagents launched before the session opened are no longer counted or listed.
+- Tokens used are broken down into cache writes, output, new input and subagents, next to the cache re-reads.
+- Added a Suggestions block that reads the session's own context, cache and memory: type /compact when the context is filling (it names Claude Code's own compaction point when `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is set), what the next message costs once the prompt cache has expired and when a one-hour cache is about to, /clear when lessons from the session are saved, a warning when nothing has been saved yet, a stalled subagent, and a budget nearly spent. The top suggestion is added to the end-of-reply line in Claude Code.
+- Other sessions (today and the last seven days) moved to their own block at the end of the panel.
+- At the start or resume of a Claude Code session, the harness asks once whether to open the token dashboard for that session: in the desktop app it opens in the app's Terminal panel, inside tmux in a split beside the session, and otherwise the command is given for a second terminal. Sessions started with `nodaris` already have the panel and are not asked. `dashboard_offer: false` in the settings turns it off.
+- The live panel now follows exactly the session `nodaris` started. It used to pick the newest transcript in the folder, so another open session there (the desktop app) could show instead.
+- Tokens used (new input, cache writes and output) are reported apart from cache re-reads. The old total counted every re-read of the conversation, which is billed at about a tenth, and ran to tens of millions for a long session.
+- Subagents show their tokens and current tool while they run, read live from their own transcripts. A subagent whose transcript has ended is shown as finished, and one silent for half an hour as stalled.
+- The flame animation is replaced by live information: what the agent is doing now with a timer, a ten-minute token timeline with each prompt marked, numbers that count up with a "+N" after each increase, and a context gauge against the model's window.
+- Added `nodaris-harness usage` and day and week figures in the panel, from a ledger that reads every transcript once and counts each API message once, even when a resumed session copies it.
+- At the end of each reply, Claude Code (terminal and desktop app) shows one line with the tokens used for the request, the session and the day. `turn_summary: false` in the settings turns it off.
+- The panel shows the memories and lessons pulled for your latest request, including the harness's own lessons, which it did not recognise before, and says why each matched.
+- Lesson recall now needs at least two shared words, one of them a keyword or part of the situation the lesson describes; words common across many lessons count for less.
 
 - Fixed `nodaris-harness approve` and `nodaris-harness security scope` refusing every real terminal with "this shell has none". Both opened `/dev/tty` read-write, which Python rejects because a terminal cannot seek; they now open it once to read and once to write, and tests drive both prompts through a pseudo-terminal.
 - `install.py` is built and works end to end: onboarding questions, `--dry-run`, `--host`, `--packs`, `--answers`, `--uninstall`, `--reconfigure` and `--no-motion`. `AGENTS.md` and the docs no longer describe it as being built.
