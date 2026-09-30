@@ -36,6 +36,15 @@ def _tool(name):
     raise SystemExit(f"{name} is missing from this installation; run `nodaris-harness doctor`.")
 
 
+def _terminal():
+    """The controlling terminal as (reader, writer), or None when there is none. One "r+" handle cannot work: a
+    terminal is not seekable, so Python refuses to open it read-write, and that error is an OSError too."""
+    try:
+        return open("/dev/tty"), open("/dev/tty", "w")
+    except OSError:
+        return None
+
+
 def cmd_hook(a):
     return dispatch.main(a.host, a.event)
 
@@ -50,18 +59,18 @@ def cmd_approve(a):
             rec = json.load(open(os.path.join(d["pending"], name)))
             print(f"{rec['hash']}  {rec['rule']}  {json.dumps(rec['action'])[:120]}")
         return 0
-    try:
-        tty = open("/dev/tty", "r+")
-    except OSError:
+    term = _terminal()
+    if term is None:
         print("Approval must be given by a person in their own terminal; this shell has none.", file=sys.stderr)
         return 2
+    tty_in, tty_out = term
 
     def ask(rec):
-        tty.write(f"\nRule: {rec['rule']}: {rec['why']}\nTool: {rec['tool']}\nWorking directory: {rec['cwd']}\n"
-                  f"Exact action:\n{json.dumps(rec['action'], indent=2)}\n\n"
-                  "Type yes to allow this exact action once: ")
-        tty.flush()
-        return tty.readline()
+        tty_out.write(f"\nRule: {rec['rule']}: {rec['why']}\nTool: {rec['tool']}\nWorking directory: {rec['cwd']}\n"
+                      f"Exact action:\n{json.dumps(rec['action'], indent=2)}\n\n"
+                      "Type yes to allow this exact action once: ")
+        tty_out.flush()
+        return tty_in.readline()
     ok, msg = policy.approve(a.hash, getpass.getuser(), ask)
     print(msg)
     return 0 if ok else 1
@@ -343,11 +352,11 @@ def cmd_design(a):
 def cmd_security(a):
     repo = a.repo or os.getcwd()
     if a.action == "scope":
-        try:
-            tty = open("/dev/tty", "r+")
-        except OSError:
+        term = _terminal()
+        if term is None:
             print("The scope is signed by a person in their own terminal; this shell has none.", file=sys.stderr)
             return 2
+        tty_in, tty_out = term
         envs = []
         for spec in a.env or []:
             name, _, hosts_ = spec.partition("=")
@@ -358,10 +367,10 @@ def cmd_security(a):
             return 1
 
         def ask(scope):
-            tty.write("\nThis signs the security scope for " + repo + ":\n" + json.dumps(scope["environments"], indent=2) +
-                      "\n\nLive checks will run against these hosts without asking again. Type yes to sign: ")
-            tty.flush()
-            return tty.readline()
+            tty_out.write("\nThis signs the security scope for " + repo + ":\n" + json.dumps(scope["environments"], indent=2) +
+                          "\n\nLive checks will run against these hosts without asking again. Type yes to sign: ")
+            tty_out.flush()
+            return tty_in.readline()
         scope, res = security.write_scope(repo, envs, getpass.getuser(), ask)
         print(f"Signed scope written to {res}" if scope else res)
         return 0 if scope else 1

@@ -17,6 +17,7 @@
 - The panel shows the memories and lessons pulled for your latest request, including the harness's own lessons, which it did not recognise before, and says why each matched.
 - Lesson recall now needs at least two shared words, one of them a keyword or part of the situation the lesson describes; words common across many lessons count for less.
 
+- Fixed `nodaris-harness approve` and `nodaris-harness security scope` refusing every real terminal with "this shell has none". Both opened `/dev/tty` read-write, which Python rejects because a terminal cannot seek; they now open it once to read and once to write, and tests drive both prompts through a pseudo-terminal.
 - `install.py` is built and works end to end: onboarding questions, `--dry-run`, `--host`, `--packs`, `--answers`, `--uninstall`, `--reconfigure` and `--no-motion`. `AGENTS.md` and the docs no longer describe it as being built.
 - Added a live panel, `nodaris-harness watch` (`--split` for a side pane in tmux), that shows tokens burning with an animation, where they went, subagents, memories pulled and files touched.
 - Added `nodaris-harness statusline`, a one-line version of the same numbers for Claude Code's status line. The installer wires it in only when the person has no status line of their own, and removes it at uninstall.
