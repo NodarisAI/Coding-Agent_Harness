@@ -266,7 +266,8 @@ def stop(ev):
         why = None
     if why:
         return {"decision": "block", "rule": "acceptance", "reason": why}
-    return {"decision": "allow"}
+    from . import statusline
+    return {"decision": "allow", "notice": statusline.turn_notice(ev)}
 
 
 def handle(ev):
@@ -297,6 +298,10 @@ def handle(ev):
             if ev.get("source") in (None, "startup") and not onboard.is_onboarded() and onboard.claim_first_offer():
                 learned = "\n\n".join(x for x in (onboard.app_instructions(CLI), learned) if x)
             learner.start_in_background(CLI)
+            if ev.get("host") == "claude":
+                from . import monitor, usage
+                monitor.write_link(os.environ.get("NODARIS_PANEL_LINK"), ev.get("transcript_path"), ev["session_id"], ev["cwd"])
+                usage.start_in_background(CLI)
             try:
                 from . import sync
                 sync.start_in_background(CLI)

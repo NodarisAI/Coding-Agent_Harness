@@ -88,7 +88,9 @@ To undo: `python3 install.py --uninstall` removes the harness from every agent i
 | `nodaris-harness learn status` | Shows what the harness has learned about how you work, and lets you revert any change |
 | `nodaris-harness tips` | Suggestions drawn from your recent sessions |
 | `nodaris-harness policy --explain "git push origin dev"` | Shows how a command would be classed |
-| `nodaris-harness watch` (`--split` for a side pane in tmux) | Live panel: tokens burning, where they went, subagents, memories pulled, files touched |
+| `nodaris` (any `claude` option works, such as `--continue`) | Starts Claude Code with the harness and the live token panel beside it, following exactly that session |
+| `nodaris-harness watch` | The live panel on its own: what the agent is doing now, tokens used this request, session, day and week, a ten-minute token timeline, subagents as they run, the memories pulled for your last request, files touched |
+| `nodaris-harness usage` | Tokens used today and over the last seven days, across every session |
 | `nodaris-harness statusline` | One-line version of the same numbers for Claude Code's status line; added at install only if you have none of your own, removed at uninstall |
 | `nodaris-harness trash <paths>` (`--list`, `--restore ID`, `--empty DAYS`) | Reversible delete: moves files to the harness trash instead of removing them |
 | `nodaris-harness budget --add N` | Raises your per-session subagent token budget |

@@ -100,14 +100,15 @@ def test_totals_and_split():
     assert s.turns == 2 and s.floor == 20000
 
 
-def test_where_tokens_went_ranks_files_agents_and_floor():
+def test_where_tokens_went_ranks_files_agents_and_replies():
     s = stats_for(session_rows())
     rows = dict(s.where(cwd="/repo"))
     assert rows["Agent Review the diff"] == 45000
     assert rows["Read src/app.py"] == len(SECRET_BODY) // 4
     assert rows["Shell pytest -q"] == 100
-    assert rows["Context floor x 2 turns"] == 40000
+    assert rows["Replies written"] == 300
     assert list(rows)[0] == "Agent Review the diff"
+    assert not any("cache" in k.lower() or "floor" in k.lower() for k in rows)     # re-reads are reported apart
 
 
 def test_bash_command_is_shortened_without_secrets():
@@ -161,8 +162,8 @@ def test_memory_titles_extracted_without_bodies():
 
 def test_burn_rate_window():
     t0 = NOW
-    s = stats_for([assistant("old", t0 - 600, 0, 0, 1_000_000, 0), assistant("new", t0 - 60, 0, 0, 50_000, 0)])
-    assert s.burn_per_min(now=t0) == pytest.approx(10_000)
+    s = stats_for([assistant("old", t0 - 600, 0, 1_000_000, 0, 0), assistant("new", t0 - 60, 0, 40_000, 9_000_000, 10_000)])
+    assert s.burn_per_min(now=t0) == pytest.approx(10_000)          # cache re-reads never count as burn
     assert s.burn_per_min(now=t0 + 400) == 0
 
 
@@ -218,7 +219,7 @@ def test_watch_plain_mode_prints_once_and_exits(tmp_path, monkeypatch):
     out = io.StringIO()
     args = type("A", (), {"split": False, "session": None, "follow": False, "host": "claude"})()
     assert monitor.watch(args, out) == 0
-    assert "\x1b" not in out.getvalue() and "Tokens this session" in out.getvalue()
+    assert "\x1b" not in out.getvalue() and "Tokens used this session" in out.getvalue()
 
 
 @pytest.mark.parametrize("cols", [120, 60])
@@ -233,8 +234,7 @@ def test_live_frame_fits_width_and_hides_contents(cols):
     assert len(monitor.render_frame(s, 60, 10, now=NOW)) <= 10
 
 
-def test_flame_grows_with_burn():
-    assert len(monitor.flame_rows(0.0, 0)) < len(monitor.flame_rows(1.0, 0))
+def test_heat_scale():
     assert monitor.heat(0) == 0 and monitor.heat(10_000_000) == 1.0
 
 

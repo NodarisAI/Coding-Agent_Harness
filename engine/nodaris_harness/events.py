@@ -8,7 +8,8 @@ Canonical event keys: hook_event_name (PreToolUse, PostToolUse, PostToolUseFailu
 PreCompact, SessionStart), tool_name (Bash, Read, Write, Edit or the host's own name), tool_input (command, file_path,
 content, new_string), tool_response, prompt, session_id, cwd, stop_hook_active, transcript_path, source, host.
 
-Outcome keys: decision ("allow", "deny" for a tool call, "block" for a prompt or a stop), reason, context.
+Outcome keys: decision ("allow", "deny" for a tool call, "block" for a prompt or a stop), reason, context, and notice
+(a line shown to the person when a turn ends; Claude Code only, as systemMessage).
 """
 import json, os, re
 
@@ -152,6 +153,8 @@ def render(host, ev, outcome):
             return (json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": ctx}}) if ctx else ""), 0
         if name in ("UserPromptSubmit", "Stop") and blocked:
             return json.dumps({"decision": "block", "reason": reason}), 0
+        if name == "Stop" and outcome.get("notice") and host == "claude":
+            return json.dumps({"systemMessage": outcome["notice"]}), 0
         if ctx and name in ("UserPromptSubmit", "PostToolUse", "PostToolUseFailure", "SessionStart", "Stop"):
             wire = "PostToolUse" if host == "codex" and name == "PostToolUseFailure" else name
             return json.dumps({"hookSpecificOutput": {"hookEventName": wire, "additionalContext": ctx}}), 0

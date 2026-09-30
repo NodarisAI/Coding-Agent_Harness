@@ -62,7 +62,19 @@ def test_arguments_with_spaces_survive_the_tmux_command_line():
     plan = launch.plan(["--append-system-prompt", "be brief; really"], env={}, which=which_all, cwd="/w", tty=True, pid=7)
     (argv,) = steps_of(plan, "exec")
     inner = argv[6]
-    assert shlex.split(inner)[:3] == ["/usr/local/bin/claude", "--append-system-prompt", "be brief; really"]
+    assert shlex.split(inner)[2:5] == ["/usr/local/bin/claude", "--append-system-prompt", "be brief; really"]
+
+
+def test_the_panel_follows_the_session_this_command_starts():
+    for env in ({}, {"TMUX": "/tmp/tmux-1/default,1,0"}):
+        plan = launch.plan(["--resume"], env=env, which=which_all, cwd="/w", tty=True, pid=3, link="0123456789abcdef")
+        joined = " ".join(" ".join(a) for _, a in plan)
+        assert "watch --host claude --link 0123456789abcdef" in joined
+        assert ("setenv", ["NODARIS_PANEL_LINK", "0123456789abcdef"]) in plan or "NODARIS_PANEL_LINK=0123456789abcdef" in joined
+    (argv,) = steps_of(launch.plan([], env={}, which=which_all, cwd="/w", tty=True, pid=3, link="00ff00ff00ff00ff"), "exec")
+    assert shlex.split(argv[6])[:2] == ["env", "NODARIS_PANEL_LINK=00ff00ff00ff00ff"]
+    tm = {"TMUX": "x"}
+    assert launch.plan([], env=tm, which=which_all, tty=True)[0][1][1] != launch.plan([], env=tm, which=which_all, tty=True)[0][1][1]
 
 
 def test_no_arguments_starts_claude_instead_of_a_usage_error(monkeypatch):

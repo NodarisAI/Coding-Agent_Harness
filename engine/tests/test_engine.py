@@ -88,6 +88,22 @@ def test_lessons_are_recalled_once_by_prompt_and_by_file(env, tmp_path):
     assert memory.recall_for_prompt("s5", proj, "rename the button on the settings page") == ""
 
 
+def test_lesson_recall_needs_the_situation_not_just_shared_words(env):
+    proj = env["_proj"]
+    memory.add(proj, "adding an X12 835 parser path", "wrap a fragment in a synthetic ISA envelope before testing it",
+               keywords=["835", "parser", "envelope"])
+    memory.add(proj, "a test fixture needs a person", "use names like Test Patient One and never plausible birth dates",
+               keywords=["fixture", "names"])
+    for i in range(12):                                     # a library big enough for common words to lose weight
+        memory.add(proj, f"changing module {i} of the session code", f"run the session tests for module {i} first",
+                   keywords=["session", f"module{i}"])
+    hit = memory.recall_for_prompt("s6", proj, "the 835 envelope check fails in the parser")
+    assert "synthetic ISA envelope" in hit and "(matched: " in hit and "835" in hit.split("(matched: ")[1]
+    assert "Test Patient One" not in hit and "session tests" not in hit
+    assert memory.recall_for_prompt("s7", proj, "run the session tests first please") == ""
+    assert "Test Patient One" in memory.recall_for_prompt("s8", proj, "add a fixture with realistic patient names")
+
+
 def test_a_lesson_never_stores_patient_identifiers(env):
     lesson, path = memory.add(env["_proj"], "member id W123456789 failed eligibility", "check the payer id first")
     assert "W123456789" not in open(path).read()
