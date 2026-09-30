@@ -18,6 +18,21 @@ Shashank, the first teammate to use the harness day to day, reported three probl
 He also reported that the token dashboard showed whichever session in `ai-os` wrote last, not the one in front of
 him.
 
+## Options
+
+### A. In-app approval question plus the terminal
+The refusal carries an AskUserQuestion payload written by the harness; the person answers in the app; the hooks turn
+the answer into a signed one-time approval. The terminal approval stays.
+
+### B. A separate approval window
+Open a Terminal.app window for every approval (option A in the control dashboard spec), outside the agent's reach.
+
+### C. Claude Code's native "ask" decision only
+Return permissionDecision "ask" and let Claude Code's own dialog decide.
+
+## Chosen
+Option A, with Option C kept for C-COLLAB in permission modes that show a dialog. Details below.
+
 ## Decisions
 
 **Contact details are context-dependent.** Health identifiers (SSN, MRN, member and claim ids, patient names) still
@@ -51,14 +66,25 @@ for up to 12 hours). Merges, releases, pushes and deploys stay per call.
 (`CLAUDE_CODE_SESSION_ID`), then the newest transcript in the folder, and stays on what it found instead of re-picking
 the newest every five seconds.
 
-## Options rejected
+## Rejected
 
-- Opening a separate Terminal.app window for every approval (option A in the control dashboard spec): it needs the
+- Option B, a separate window for every approval: it needs the
   person to switch windows for each comment, and it does not help in the desktop app, where the question can be shown
   in place.
-- Letting the native "ask" decision carry everything: Claude Code does not show it in bypass mode.
+- Option C for everything: Claude Code does not show its dialog in bypass mode.
 - Making consent a standing setting ("allow all pushes"): an approval stays bound to one exact call, except for the
   one rule marked grantable.
+
+## Acceptance checks
+- A stopped push offers the question; "Allow once" lets exactly that call run once
+  (`test_a_stopped_push_offers_the_question_and_one_allow_runs_exactly_one_call`).
+- A prohibited action and a guard stop can each be allowed once with consent.
+- Pre-filled answers, an answer the PreToolUse hook never saw, another session's answer, an edited question and an
+  edited pending record approve nothing (`engine/tests/test_consent.py`).
+- `P-HOOK-BYPASS` and `P-APPROVAL-STORE` offer no question and are approved only at the terminal.
+- A lone email does not stop a prompt; one next to a health cue does (`engine/tests/test_contact_and_asks.py`).
+- The dashboard stays on its own session (`engine/tests/test_panel_session.py`).
+- Full suite passes on Python 3.12 and 3.9; the harness security scan is clean.
 
 ## Not verified
 
