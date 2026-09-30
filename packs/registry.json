@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "about": "Recommended Claude Code plugin marketplaces by company or vendor. Onboarding suggests these; nothing here is ever installed without the person's explicit yes. Always install plugins with --scope user, otherwise the plugin binds to a single project.",
+  "entries": [
+    {
+      "id": "nodaris",
+      "kind": "company",
+      "names": ["Nodaris", "NodarisAI", "Nodaris AI"],
+      "aliases": ["nodaris", "nodarisai", "nodaris ai", "nodaris.ai", "nodaris inc"],
+      "domains": ["nodaris.ai", "nodarisapp.com"],
+      "description": "Nodaris product knowledge: repositories, products, architecture and the known failure catalogue.",
+      "packs": ["core", "healthcare"],
+      "marketplace": {
+        "name": "nodaris",
+        "source": {"source": "git", "url": "https://github.com/NodarisAI/Nodaris-Memory-Vault.git"},
+        "repo": "NodarisAI/Nodaris-Memory-Vault",
+        "add": "claude plugin marketplace add NodarisAI/Nodaris-Memory-Vault"
+      },
+      "plugins": [
+        {
+          "name": "nodaris-context",
+          "description": "Loads Nodaris repository, product and failure-mode context on demand.",
+          "install": [
+            "claude plugin marketplace add NodarisAI/Nodaris-Memory-Vault",
+            "claude plugin install nodaris-context@nodaris --scope user"
+          ]
+        }
+      ],
+      "verified": true,
+      "verified_by": "Local marketplace clone with .claude-plugin/marketplace.json (name nodaris, plugin nodaris-context) whose origin is this URL, checked 2026-09-29. The repository is private, so the public GitHub API does not show it."
+    },
+    {
+      "id": "anthropic-official",
+      "kind": "vendor",
+      "names": ["Anthropic official plugins", "Claude plugins official"],
+      "aliases": ["anthropic", "claude", "claude code", "claude-plugins-official", "anthropics"],
+      "domains": ["anthropic.com", "claude.ai", "claude.com"],
+      "description": "Anthropic's curated directory of Claude Code plugins, including code review, security guidance and frontend design.",
+      "packs": ["core"],
+      "marketplace": {
+        "name": "claude-plugins-official",
+        "source": {"source": "github", "repo": "anthropics/claude-plugins-official"},
+        "repo": "anthropics/claude-plugins-official",
+        "add": "claude plugin marketplace add anthropics/claude-plugins-official"
+      },
+      "plugins": [
+        {
+          "name": "security-guidance",
+          "description": "Warns about common security mistakes while the agent edits code.",
+          "install": [
+            "claude plugin marketplace add anthropics/claude-plugins-official",
+            "claude plugin install security-guidance@claude-plugins-official --scope user"
+          ]
+        },
+        {
+          "name": "code-review",
+          "description": "Reviews a diff or pull request for correctness problems.",
+          "install": [
+            "claude plugin marketplace add anthropics/claude-plugins-official",
+            "claude plugin install code-review@claude-plugins-official --scope user"
+          ]
+        },
+        {
+          "name": "frontend-design",
+          "description": "Guidance for distinctive, well-built user interfaces.",
+          "install": [
+            "claude plugin marketplace add anthropics/claude-plugins-official",
+            "claude plugin install frontend-design@claude-plugins-official --scope user"
+          ]
+        }
+      ],
+      "verified": true,
+      "verified_by": "GitHub API: public repository anthropics/claude-plugins-official with .claude-plugin/marketplace.json, checked 2026-09-29."
+    },
+    {
+      "id": "anthropic-skills",
+      "kind": "vendor",
+      "names": ["Anthropic agent skills"],
+      "aliases": ["anthropic skills", "agent skills", "anthropic-agent-skills", "anthropics/skills"],
+      "domains": ["anthropic.com"],
+      "description": "Anthropic's public agent skills, including Word, Excel, PowerPoint and PDF document skills.",
+      "packs": ["core", "creative"],
+      "marketplace": {
+        "name": "anthropic-agent-skills",
+        "source": {"source": "github", "repo": "anthropics/skills"},
+        "repo": "anthropics/skills",
+        "add": "claude plugin marketplace add anthropics/skills"
+      },
+      "plugins": [
+        {
+          "name": "document-skills",
+          "description": "Creates and edits Word, Excel, PowerPoint and PDF files.",
+          "install": [
+            "claude plugin marketplace add anthropics/skills",
+            "claude plugin install document-skills@anthropic-agent-skills --scope user"
+          ]
+        }
+      ],
+      "verified": true,
+      "verified_by": "GitHub API: public repository anthropics/skills with .claude-plugin/marketplace.json, checked 2026-09-29."
+    },
+    {
+      "id": "claude-code-plugins",
+      "kind": "vendor",
+      "names": ["Claude Code bundled plugins"],
+      "aliases": ["claude-code-plugins", "anthropics/claude-code"],
+      "domains": ["anthropic.com"],
+      "description": "The plugins published in the Claude Code repository, such as feature development and pull request review.",
+      "packs": ["core"],
+      "marketplace": {
+        "name": "claude-code-plugins",
+        "source": {"source": "github", "repo": "anthropics/claude-code"},
+        "repo": "anthropics/claude-code",
+        "add": "claude plugin marketplace add anthropics/claude-code"
+      },
+      "plugins": [
+        {
+          "name": "pr-review-toolkit",
+          "description": "Specialised reviewers for pull requests: tests, comments, types and error handling.",
+          "install": [
+            "claude plugin marketplace add anthropics/claude-code",
+            "claude plugin install pr-review-toolkit@claude-code-plugins --scope user"
+          ]
+        }
+      ],
+      "verified": true,
+      "verified_by": "GitHub API: public repository anthropics/claude-code with .claude-plugin/marketplace.json, checked 2026-09-29."
+    }
+  ]
+}

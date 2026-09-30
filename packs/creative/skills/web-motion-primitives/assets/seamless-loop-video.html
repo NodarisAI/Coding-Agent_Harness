@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Seamless Loop Video Background</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background:#050505; color:#fff; font-family: ui-sans-serif, system-ui, sans-serif; }
+
+  .hero { position: relative; min-height: 100svh; display: grid; place-items: center; overflow: hidden; }
+
+  /* Two stacked <video> elements playing the same file. One is visible while
+     the other is parked at t=0, and they cross-fade at the seam. This exists
+     because AI-generated clips almost never loop frame-perfectly — a raw
+     `loop` attribute produces a visible hard cut every N seconds, which is the
+     single most common tell that a site was assembled from generated video. */
+  .hero__bg { position: absolute; inset: 0; z-index: 0; background: #000; }
+  .hero__bg video {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity var(--fade, 900ms) linear;
+    will-change: opacity;
+  }
+  .hero__bg video.is-live { opacity: 1; }
+
+  .hero__scrim { position: absolute; inset: 0; z-index: 1;
+    background: radial-gradient(120% 80% at 50% 40%, transparent 0%, rgba(0,0,0,.55) 70%, rgba(0,0,0,.85) 100%); }
+
+  .hero__content { position: relative; z-index: 2; text-align: center; padding: 0 24px; }
+  h1 { font-size: clamp(40px, 9vw, 132px); font-weight: 500; letter-spacing: -0.045em; line-height: .92; }
+  p  { margin-top: 20px; opacity: .7; font-size: clamp(15px, 1.4vw, 19px); }
+</style>
+</head>
+<body>
+
+<section class="hero">
+  <div class="hero__bg" data-loop-video
+       data-src="https://cdn.coverr.co/videos/coverr-a-forest-in-the-fog-1573/1080p.mp4"
+       data-fade="900">
+  </div>
+  <div class="hero__scrim"></div>
+  <div class="hero__content">
+    <h1>Seamless<br>by construction</h1>
+    <p>Cross-faded dual-buffer loop — no hard cut at the seam.</p>
+  </div>
+</section>
+
+<script>
+(function () {
+  document.querySelectorAll('[data-loop-video]').forEach((mount) => {
+    const src  = mount.dataset.src;
+    const fade = Number(mount.dataset.fade || 900);
+    mount.style.setProperty('--fade', fade + 'ms');
+
+    const make = () => {
+      const v = document.createElement('video');
+      v.src = src; v.muted = true; v.playsInline = true; v.preload = 'auto';
+      v.setAttribute('muted', ''); v.setAttribute('playsinline', '');
+      mount.appendChild(v);
+      return v;
+    };
+
+    const a = make(), b = make();
+    let live = a, idle = b;
+
+    // prefers-reduced-motion users get a single still frame. Autoplaying
+    // full-bleed video is exactly the class of motion that setting exists for.
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      a.classList.add('is-live');
+      a.addEventListener('loadeddata', () => { a.currentTime = 0.1; }, { once: true });
+      return;
+    }
+
+    const start = () => {
+      live.classList.add('is-live');
+      live.play().catch(() => {});
+      startTick();
+    };
+
+    // Watch the playhead rather than listening for 'ended': we need to begin
+    // the cross-fade *before* the last frame, otherwise the fade itself lands
+    // on the cut we are trying to hide.
+    let raf = null;
+    // Always cancel before (re)starting. Both swap() and the visibilitychange
+    // handler can call tick(), and two concurrent rAF loops would each trip the
+    // swap threshold — producing a double cross-fade and a visible stutter.
+    const startTick = () => { cancelAnimationFrame(raf); raf = null; tick(); };
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      const d = live.duration;
+      if (!d || Number.isNaN(d)) return;
+      if (d - live.currentTime <= fade / 1000) {
+        cancelAnimationFrame(raf);
+        swap();
+      }
+    };
+
+    const swap = () => {
+      idle.currentTime = 0;
+      idle.play().catch(() => {});
+      idle.classList.add('is-live');
+      live.classList.remove('is-live');
+      const outgoing = live;
+      live = idle; idle = outgoing;
+      // Park the outgoing buffer only after its opacity transition finishes,
+      // otherwise you see it jump back to frame 0 mid-fade.
+      setTimeout(() => { outgoing.pause(); outgoing.currentTime = 0; }, fade);
+      startTick();
+    };
+
+    if (a.readyState >= 2) start();
+    else a.addEventListener('loadeddata', start, { once: true });
+
+    // Stop burning decode cycles when the tab is hidden or the hero scrolls away.
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { live.pause(); cancelAnimationFrame(raf); raf = null; }
+      else { live.play().catch(() => {}); startTick(); }
+    });
+  });
+})();
+</script>
+</body>
+</html>

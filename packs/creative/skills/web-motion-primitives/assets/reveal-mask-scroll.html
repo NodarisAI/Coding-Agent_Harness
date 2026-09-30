@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Scroll Reveal Mask — before/after transition</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background:#07090a; color:#fff; font-family: ui-sans-serif, system-ui, sans-serif; }
+  .spacer { height: 60svh; display: grid; place-items: center; opacity: .35; letter-spacing: .18em; font-size: 12px; text-transform: uppercase; }
+
+  /* The signature "dead rock -> mossy rock" transition: two renders of the
+     SAME frame, one bare and one dressed, wiped between by an animated mask.
+     Generate the pair with an image model (identical composition, one
+     instruction changed) — the mask does the rest, and because both layers
+     are static the whole thing costs one composite per frame. */
+  .reveal { position: relative; height: 100svh; overflow: hidden; }
+  .reveal__layer { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .reveal__layer--after {
+    /* --p is 0 -> 1, driven by scroll. The soft band (the 12% feather) is what
+       stops it reading as a wipe and makes it read as growth. */
+    -webkit-mask-image: linear-gradient(to top,
+      #000 calc(var(--p, 0) * 130% - 12%), transparent calc(var(--p, 0) * 130%));
+            mask-image: linear-gradient(to top,
+      #000 calc(var(--p, 0) * 130% - 12%), transparent calc(var(--p, 0) * 130%));
+    will-change: mask-image;
+  }
+  .reveal__caption {
+    position: absolute; left: 50%; bottom: 8vh; transform: translateX(-50%);
+    font-size: clamp(28px, 5vw, 72px); letter-spacing: -.04em; text-align: center;
+    mix-blend-mode: difference; pointer-events: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal__layer--after { -webkit-mask-image: none; mask-image: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="spacer">scroll down</div>
+
+<section class="reveal" data-reveal>
+  <img class="reveal__layer reveal__layer--before" alt=""
+       src="https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=1600&q=80">
+  <img class="reveal__layer reveal__layer--after" alt=""
+       src="https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=1600&q=80">
+  <div class="reveal__caption">it grows back</div>
+</section>
+
+<div class="spacer">end</div>
+
+<script>
+(function () {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const els = [...document.querySelectorAll('[data-reveal]')];
+  if (!els.length || reduce) { els.forEach(e => e.style.setProperty('--p', 1)); return; }
+
+  // No library needed for a single scroll-linked value. IntersectionObserver
+  // gates the rAF loop so offscreen sections cost nothing — that gating is the
+  // whole reason to hand-roll this instead of reaching for ScrollTrigger when
+  // it is the only scroll effect on the page.
+  const active = new Set();
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => e.isIntersecting ? active.add(e.target) : active.delete(e.target));
+    if (active.size) loop();
+  }, { threshold: 0 });
+  els.forEach(el => io.observe(el));
+
+  let running = false;
+  function loop() {
+    if (running) return;
+    running = true;
+    const frame = () => {
+      active.forEach((el) => {
+        const r = el.getBoundingClientRect();
+        // 0 when the section's top hits the viewport bottom,
+        // 1 when its bottom hits the viewport top.
+        const p = 1 - (r.bottom / (window.innerHeight + r.height));
+        el.style.setProperty('--p', Math.min(1, Math.max(0, p * 1.6)).toFixed(4));
+      });
+      if (active.size) requestAnimationFrame(frame);
+      else running = false;
+    };
+    requestAnimationFrame(frame);
+  }
+})();
+</script>
+</body>
+</html>

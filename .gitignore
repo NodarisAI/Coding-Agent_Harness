@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Build output and local state: never committed
+dist/
+build/
+.nodaris-harness/
+*.log
+*.jsonl
+
+# Secrets and personal configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+settings.local.json
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+graphify-out/

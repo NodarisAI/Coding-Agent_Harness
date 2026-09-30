@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Spotlight Video Mask</title>
+<style>
+  :root { --spot: 0px; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background:#000; color:#fff; font-family: ui-sans-serif, system-ui, sans-serif; }
+
+  /* The stage holds a still image; the video sits on top, revealed only
+     inside a circular mask that tracks the pointer. Using -webkit-mask-image
+     with a radial-gradient keeps the reveal on the compositor — no repaint
+     per frame, which is what makes this feel liquid instead of janky. */
+  .spotlight {
+    position: relative;
+    width: min(92vw, 1100px);
+    aspect-ratio: 16 / 9;
+    margin: 6vh auto;
+    overflow: hidden;
+    border-radius: 20px;
+    cursor: none;
+    isolation: isolate;
+  }
+  .spotlight__still,
+  .spotlight__video {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .spotlight__video {
+    /* --x/--y are set in px by JS; --spot animates 0 -> radius on enter. */
+    -webkit-mask-image: radial-gradient(
+      circle var(--spot) at var(--x, 50%) var(--y, 50%),
+      #000 0%, #000 62%, transparent 100%);
+            mask-image: radial-gradient(
+      circle var(--spot) at var(--x, 50%) var(--y, 50%),
+      #000 0%, #000 62%, transparent 100%);
+    -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
+    will-change: mask-image;
+  }
+  /* Ring is decorative — it sells the "lens" idea. Pure transform, no layout. */
+  .spotlight__ring {
+    position: absolute; top: 0; left: 0;
+    width: 1px; height: 1px;
+    border-radius: 50%;
+    pointer-events: none;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.35), 0 0 60px rgba(255,255,255,.12);
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0;
+    transition: opacity .3s ease;
+  }
+  .spotlight__label {
+    position: absolute; left: 32px; bottom: 28px;
+    font-size: clamp(28px, 4vw, 56px);
+    letter-spacing: -0.03em;
+    mix-blend-mode: difference;
+    pointer-events: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    /* Without a pointer-driven reveal there is nothing to see, so just show
+       the video outright rather than leaving a dead still frame. */
+    .spotlight__video { -webkit-mask-image: none; mask-image: none; }
+    .spotlight__ring { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="spotlight" data-spotlight data-radius="180">
+  <img class="spotlight__still" alt=""
+       src="https://images.unsplash.com/photo-1487017159836-4e23ece2e4cf?w=1600&q=80">
+  <video class="spotlight__video" muted loop playsinline preload="auto"
+         poster="https://images.unsplash.com/photo-1487017159836-4e23ece2e4cf?w=40">
+    <source src="https://cdn.coverr.co/videos/coverr-a-forest-in-the-fog-1573/1080p.mp4" type="video/mp4">
+  </video>
+  <div class="spotlight__ring" data-ring></div>
+  <div class="spotlight__label">hover me</div>
+</div>
+
+<script>
+(function () {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  document.querySelectorAll('[data-spotlight]').forEach((root) => {
+    const video  = root.querySelector('.spotlight__video');
+    const ring   = root.querySelector('[data-ring]');
+    const radius = Number(root.dataset.radius || 180);
+
+    if (reduce) { video.play().catch(() => {}); return; }
+
+    // Pointer position is written once per rAF instead of once per mousemove.
+    // Browsers fire mousemove far faster than they paint; coalescing here is
+    // the difference between 60fps and a stuttering mask on a 120Hz trackpad.
+    let x = 0, y = 0, queued = false, inside = false;
+
+    const paint = () => {
+      queued = false;
+      root.style.setProperty('--x', x + 'px');
+      root.style.setProperty('--y', y + 'px');
+      ring.style.transform =
+        `translate(${x}px, ${y}px) translate(-50%,-50%) scale(${inside ? radius * 2 : 0})`;
+    };
+
+    const onMove = (e) => {
+      const r = root.getBoundingClientRect();
+      x = e.clientX - r.left;
+      y = e.clientY - r.top;
+      if (!queued) { queued = true; requestAnimationFrame(paint); }
+    };
+
+    root.addEventListener('pointermove', onMove);
+
+    root.addEventListener('pointerenter', (e) => {
+      inside = true;
+      onMove(e);
+      // Play only while revealed. An autoplaying offscreen video is the single
+      // biggest battery/CPU cost on these pages when you stack 6 of them.
+      video.play().catch(() => {});
+      root.style.setProperty('--spot', radius + 'px');
+      ring.style.opacity = '1';
+    });
+
+    root.addEventListener('pointerleave', () => {
+      inside = false;
+      root.style.setProperty('--spot', '0px');
+      ring.style.opacity = '0';
+      ring.style.transform = 'translate(-50%,-50%) scale(0)';
+      video.pause();
+    });
+
+    // Animate the radius itself so the circle grows/shrinks rather than
+    // popping. transition on a custom property needs @property to work in
+    // every engine, so register it and fall back silently where unsupported.
+    try {
+      CSS.registerProperty({
+        name: '--spot', syntax: '<length>', inherits: true, initialValue: '0px'
+      });
+      root.style.transition = '--spot .45s cubic-bezier(.22,1,.36,1)';
+    } catch (_) { /* Safari < 16.4: instant reveal, still correct */ }
+  });
+})();
+</script>
+</body>
+</html>

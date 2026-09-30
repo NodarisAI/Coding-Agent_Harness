@@ -1,0 +1,7 @@
+{
+  "source": "https://github.com/michael-denyer/pstack-claude",
+  "commit": "c02fd4922b25ee005f42042463d741d236c2c35e",
+  "license": "MIT (see LICENSE, NOTICE.md)",
+  "vendored": "2026-09-26",
+  "changes": "plugin namespace 'pstack:' removed and plugin-root paths pointed at the skills folder, because the harness installs skills directly, not as a plugin; the session hook's routing text lives in rules/pstack-routing.md"
+}

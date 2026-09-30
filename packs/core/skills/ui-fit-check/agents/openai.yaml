@@ -1,0 +1,4 @@
+interface:
+  display_name: "UI fit check"
+  short_description: "Fail a web UI change on text that spills, is cut short, wraps or overlaps; then look at the screenshots"
+  default_prompt: "Use $ui-fit-check on every route this change touched, in each tenant, until it reports 0 findings, then review the screenshots."
