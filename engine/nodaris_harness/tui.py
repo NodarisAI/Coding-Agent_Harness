@@ -48,6 +48,11 @@ def width(stream=None):
     return max(20, shutil.get_terminal_size((80, 24)).columns or 80)   # some terminals report 0 columns
 
 
+def width_known():
+    """False when the terminal reports no width (some embedded terminals say 0 columns), so width() is a guess."""
+    return shutil.get_terminal_size((0, 0)).columns > 0
+
+
 def unicode_ok(stream=None):
     enc = (getattr(_out(stream), "encoding", None) or "").lower()
     try:
@@ -280,8 +285,12 @@ def splash(stream=None, duration=1.2, tagline=TAGLINE):
     """The banner with a moving teal shimmer, under two seconds; any key skips it. Plain text when motion is off."""
     s = _out(stream)
     cols = width(s)
-    if plain(s):
-        s.write(f"{COMPACT}  {tagline}\n\n" if not s.isatty() else "\n".join(banner_lines(cols, unicode_ok(s))) + f"\n{tagline}\n\n")
+    if plain(s) or not width_known():
+        # Redrawing in place needs the real width: a banner wrapped at a guessed width stacks copies down the screen.
+        if not s.isatty() or not width_known():
+            s.write(f"{COMPACT}  {tagline}\n\n")                 # one line never wraps into a mess
+        else:
+            s.write("\n".join(banner_lines(cols, unicode_ok(s))) + f"\n{tagline}\n\n")
         s.flush()
         return
     lines = banner_lines(cols, unicode_ok(s))
