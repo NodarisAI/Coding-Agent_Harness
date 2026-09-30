@@ -19,6 +19,9 @@ FRAMES = ("▁▃▂", "▂▅▃", "▃▆▅", "▅▇▆", "▆█▇", "▅�
 ASCII_FRAMES = (".:.", ":^:", "^*^", "*^*", ":*:", "^:^")
 
 
+CACHE_VERSION = 2   # 2: session opens, cache lifetime and saved lessons are read from the transcript
+
+
 def _cache_path(session):
     return os.path.join(policy.home(), "monitor-cache", hashlib.sha256(str(session).encode()).hexdigest()[:24] + ".json")
 
@@ -27,7 +30,7 @@ def _load(path, transcript):
     try:
         with open(path) as fh:
             c = json.load(fh)
-        if c.get("transcript") == transcript and isinstance(c.get("state"), dict):
+        if c.get("v") == CACHE_VERSION and c.get("transcript") == transcript and isinstance(c.get("state"), dict):
             return c
     except (OSError, ValueError):
         pass
@@ -62,7 +65,7 @@ def session_stats(transcript, session, max_bytes=64 * 1024 * 1024):
     complete = tail.offset >= tail.size() - 1
     if complete:
         stats.resolve_agents(os.path.join(os.path.dirname(transcript), session, "subagents"))
-    _save(cpath, {"transcript": transcript, "offset": tail.offset, "sig": sig.offset, "state": stats.state()})
+    _save(cpath, {"v": CACHE_VERSION, "transcript": transcript, "offset": tail.offset, "sig": sig.offset, "state": stats.state()})
     return stats, complete
 
 
@@ -75,7 +78,7 @@ def line(payload, now=None, unicode=True, colour=None):
         return "nodaris: waiting for a session"
     stats, _ = session_stats(transcript, session)
 
-    tot = stats.totals()
+    tot = stats.totals(stats.scope())
     burn = stats.burn_per_min(now)
     b = monitor.budgets()
     used = monitor.billable(tot) / max(1, b["session"])
@@ -134,16 +137,20 @@ def turn_notice(ev, now=None):
         if not complete:
             return ""
         from . import usage
-        tot, req = stats.totals(), stats.request()
+        since = stats.scope()
+        tot, req = stats.totals(since), stats.request()
         fmt = monitor.fmt_tokens
+        when = f" since {monitor.when_text(since, time.time() if now is None else now)}" if since else ""
         parts = [f"{fmt(req['used'])} for this request" if req["start"] else "",
-                 f"{fmt(tot['used'])} this session (plus {fmt(tot['cache_read'])} cache re-reads)"]
+                 f"{fmt(tot['used'])} this session{when} (plus {fmt(tot['cache_read'])} cache re-reads)"]
         ledger = usage.refresh(0.25, now=now)
         if ledger.complete:
             today = ledger.summary(now)["today"]
             parts.append(f"{fmt(today['used'])} today across {today['sessions']} session"
                          f"{'s' if today['sessions'] != 1 else ''}")
-        return "Token use: " + ", ".join(p for p in parts if p) + "."
+        text = "Token use: " + ", ".join(p for p in parts if p) + "."
+        tips = monitor.suggestions(stats, now)
+        return text + (" Suggestion: " + tips[0][1] if tips else "")
     except Exception:  # noqa: BLE001  the notice is informative and never holds up the end of a turn
         return ""
 

@@ -74,3 +74,19 @@ keeps a repo lesson only when it overlaps the prompt (`recall.repo_card(repo, pr
 - ai-os `memory_loop/tests/test_core.py::test_repo_card_keeps_only_lessons_that_match_the_prompt`.
 - Live check: the panel run in tmux on a real 105 MB session showed the current tool with a running timer, finished
   and stalled subagents, and the memories for the current request.
+
+## Follow-up the same night: one session, from when it was opened
+Varun saw 25M "this session" for a desktop conversation resumed over six days, and 98.6M (then 805M, in red) from the
+copy installed on his machine, which still added cache re-reads and followed whichever session wrote last.
+- Claude Code writes each SessionStart hook result into the transcript as an attachment named `SessionStart:<source>`.
+  The panel reads it: the last `startup`, `resume` or `clear` opens the session; `compact` does not. The session counts
+  from there, so the figure works for existing transcripts without any new state. Rejected: a harness-written open
+  record (misses every session opened before install) and a gap-in-activity heuristic (guesses).
+- The status line cache prunes old messages into running totals; a second running total keeps the messages after the
+  latest open, reset at each open, so the scoped figure survives pruning.
+- Suggestions are computed from the session alone and never run anything: context against the window or the person's
+  `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`, cache lifetime from `cache_creation.ephemeral_1h_input_tokens`, lessons and
+  memory notes written during the session (the harness and memory-loop add commands, auto-memory and handoff files),
+  stalled subagents and the budget.
+- The dashboard offer at SessionStart is context for Claude, not a command: Claude asks with AskUserQuestion and opens
+  the panel only on a yes. The session id is checked against `[A-Za-z0-9_-]{8,64}` before it goes into a command.

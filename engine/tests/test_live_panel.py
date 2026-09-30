@@ -22,7 +22,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
     monkeypatch.setenv("NODARIS_HARNESS_NO_BG", "1")
     monkeypatch.setenv("TERM", "xterm-256color")
-    for k in ("NO_COLOR", "NODARIS_REDUCED_MOTION", "NODARIS_PANEL_LINK"):
+    for k in ("NO_COLOR", "NODARIS_REDUCED_MOTION", "NODARIS_PANEL_LINK", "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"):
         monkeypatch.delenv(k, raising=False)
 
 

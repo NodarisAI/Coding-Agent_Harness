@@ -302,6 +302,7 @@ def handle(ev):
                 from . import monitor, usage
                 monitor.write_link(os.environ.get("NODARIS_PANEL_LINK"), ev.get("transcript_path"), ev["session_id"], ev["cwd"])
                 usage.start_in_background(CLI)
+                learned = "\n\n".join(x for x in (learned, monitor.dashboard_offer(ev, CLI)) if x)
             try:
                 from . import sync
                 sync.start_in_background(CLI)

@@ -78,9 +78,11 @@ def write(path, rows, mode="w"):
 @pytest.fixture(autouse=True)
 def env(tmp_path, monkeypatch):
     monkeypatch.setenv("NODARIS_HARNESS_HOME", str(tmp_path / "home"))
-    for k in ("NO_COLOR", "NODARIS_REDUCED_MOTION", "COLORTERM"):
+    for k in ("NO_COLOR", "NODARIS_REDUCED_MOTION", "COLORTERM", "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("TERM", "xterm-256color")
+    if not os.environ.get("CLAUDE_CONFIG_DIR", "").startswith(str(tmp_path)):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude-config"))
 
 
 def stats_for(rows):

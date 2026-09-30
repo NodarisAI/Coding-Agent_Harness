@@ -22,6 +22,11 @@ agent-<id>.meta.json naming the tool call that launched it. The monitor reads:
 
 Numbers follow usage.py: "tokens used" are new input, cache writes and output (subagents included); cache re-reads
 are shown separately because they cost about a tenth as much.
+
+"This session" counts from the moment the session was last opened: Claude Code records every SessionStart hook in the
+transcript as an attachment named "SessionStart:<source>", and a startup, resume or clear opens the session while a
+compaction does not. A conversation resumed over several days shows its whole total on a second, labelled line.
+Other sessions appear only in their own block, from the ledger in usage.py.
 """
 import argparse, glob, hashlib, json, math, os, re, shlex, shutil, signal, subprocess, sys, threading, time
 from datetime import datetime
@@ -53,6 +58,12 @@ SAFE_WORD = re.compile(r"^[A-Za-z0-9_.:/@+-]{1,24}$")
 LINK_RE = re.compile(r"^[a-f0-9]{8,32}$")
 NOT_A_PROMPT = ("<task-notification>", "<local-command", "<command-name>", "<command-message>", "<system-reminder>",
                 "Caveat:", "<bash-", "[Request interrupted")
+OPEN_SOURCES = ("startup", "resume", "clear")
+# Lessons and memory written during the session: the harness and memory-loop commands, and the auto-memory and handoff
+# files Claude Code sessions write. A match only means work was saved; nothing about its content is read.
+SAVE_COMMAND_RE = re.compile(r"(?:nodaris-harness|memory-loop)\S*\s+(?:lessons\s+)?add\b")
+SAVE_PATH_RE = re.compile(r"/\.claude/projects/[^/]+/memory/[^/]+\.md$|/\.remember/[^/]+\.md$")
+CACHE_WARN = 900           # seconds before the prompt cache expires when the panel starts to say so
 SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 BLOCKS = " ▁▂▃▄▅▆▇█"
 
@@ -349,7 +360,7 @@ class SessionStats:
 
     FIELDS = ("msgs", "order", "base", "floor", "turns", "first_ts", "last_ts", "pending", "reads", "shell", "files",
               "agents", "memories", "recalls", "gates", "learner", "host", "title", "entry", "model", "context",
-              "activity", "prompts", "agent_events")
+              "activity", "prompts", "agent_events", "opens", "base_open", "ttl", "saved")
 
     def __init__(self, state=None):
         s = state or {}
@@ -377,6 +388,10 @@ class SessionStats:
         self.activity = s.get("activity", ["idle", "", None])
         self.prompts = s.get("prompts", [])      # timestamps of the person's prompts, newest last
         self.agent_events = s.get("agent_events", [])   # [ts, tokens used] of subagent calls, for the timeline
+        self.opens = s.get("opens", [])          # [ts, source] of each start, resume or /clear, oldest first
+        self.base_open = s.get("base_open", [0, 0, 0, 0])   # pruned messages sent after the latest open
+        self.ttl = s.get("ttl", 300)             # prompt cache lifetime in seconds: 3600 once a one-hour write is seen
+        self.saved = s.get("saved", 0)           # lessons or memory notes written during the session
         self.agent_msgs = {}                     # agent key -> message id -> [ts, 4 values]; live only, never cached
 
     def state(self, keep=400):
@@ -385,6 +400,8 @@ class SessionStats:
                 m = self.msgs.pop(mid, None)
                 if m:
                     self.base = [a + b for a, b in zip(self.base, m[1:])]
+                    if self.opened is not None and (m[0] or 0) >= self.opened:
+                        self.base_open = [a + b for a, b in zip(self.base_open, m[1:])]
             self.order = self.order[-keep:]
         if len(self.pending) > 200:
             self.pending = dict(list(self.pending.items())[-200:])
@@ -418,6 +435,17 @@ class SessionStats:
             self.first_ts = ts if self.first_ts is None else min(self.first_ts, ts)
             self.last_ts = ts if self.last_ts is None else max(self.last_ts, ts)
 
+    def _opened(self, ts, source):
+        """A SessionStart hook ran. Startup, resume and clear open the session; a compaction continues it. Several
+        hooks run on one start, so records within a minute of the last open are the same open."""
+        if source not in OPEN_SOURCES:
+            return
+        if self.opens and abs(ts - self.opens[-1][0]) < 60:
+            return
+        self.opens.append([ts, source])
+        self.opens = self.opens[-20:]
+        self.base_open = [0, 0, 0, 0]            # every message pruned so far was sent before this open
+
     def _act(self, kind, label, ts):
         if kind != self.activity[0] or label != self.activity[1]:
             self.activity = [kind, label, ts]
@@ -441,6 +469,10 @@ class SessionStats:
                                      u.get("cache_read_input_tokens") or 0)
                 self._usage(mid, ts, inp, create, read, u.get("output_tokens") or 0)
                 self.context = inp + create + read
+                if create and self.ttl < 3600:
+                    cc = u.get("cache_creation")
+                    if isinstance(cc, dict) and (cc.get("ephemeral_1h_input_tokens") or 0) > 0:
+                        self.ttl = 3600
             if msg.get("model") and not str(msg["model"]).startswith("<"):
                 self.model = str(msg["model"])[:40]
             kinds = [b.get("type") for b in msg.get("content") or [] if isinstance(b, dict)]
@@ -464,6 +496,8 @@ class SessionStats:
                         self._tool_result(b, r.get("toolUseResult"), ts)
         elif t == "attachment":
             a = r.get("attachment") if isinstance(r.get("attachment"), dict) else {}
+            if a.get("hookEvent") == "SessionStart" and ts:
+                self._opened(ts, str(a.get("hookName") or "").partition(":")[2])
             if a.get("type") == "hook_additional_context":
                 parts = a.get("content")
                 for p in parts if isinstance(parts, list) else [parts]:
@@ -491,8 +525,13 @@ class SessionStats:
         elif name in WRITE_TOOLS and path:
             self.pending[tid] = ["write", path]
             self.files[path] = ["written", ts]
+            if path.endswith(".md") and SAVE_PATH_RE.search(path):
+                self.saved += 1
         elif name == "Bash":
             self.pending[tid] = ["shell", short_command(ti.get("command"))]
+            cmd = ti.get("command")
+            if isinstance(cmd, str) and " add" in cmd and SAVE_COMMAND_RE.search(cmd):
+                self.saved += 1
         elif name in AGENT_TOOLS:
             desc = str(ti.get("description") or ti.get("subagent_type") or "agent")[:60]
             self.agents[tid] = {"name": desc, "desc": ti.get("description"), "type": str(ti.get("subagent_type") or "")[:40],
@@ -666,14 +705,32 @@ class SessionStats:
 
     # -- derived numbers
 
-    def totals(self):
-        inp, create, read, out = self.base
+    @property
+    def opened(self):
+        return self.opens[-1][0] if self.opens else None
+
+    def scope(self):
+        """The time this session counts from, or None when that is the start of the whole conversation."""
+        o = self.opened
+        return o if o is not None and self.first_ts is not None and o > self.first_ts + 60 else None
+
+    def session_agents(self, since=None):
+        since = self.scope() if since is None else since
+        return [a for a in self.agents.values() if since is None or (a.get("ts") or 0) >= since or agent_live(a)]
+
+    def totals(self, since=None):
+        """Token figures for the whole conversation, or for the messages and subagents since `since`."""
+        inp, create, read, out = self.base if since is None else self.base_open
         for m in self.msgs.values():
-            inp, create, read, out = inp + m[1], create + m[2], read + m[3], out + m[4]
-        agents = sum(a.get("used", a.get("tokens")) or 0 for a in self.agents.values())
-        agent_cache = sum(a.get("cache") or 0 for a in self.agents.values())
-        return {"cache_read": read + agent_cache, "new_input": inp + create, "output": out, "subagents": agents,
-                "used": inp + create + out + agents, "total": read + inp + create + out + agents}
+            if since is None or (m[0] or 0) >= since:
+                inp, create, read, out = inp + m[1], create + m[2], read + m[3], out + m[4]
+        ags = self.agents.values() if since is None else [a for a in self.agents.values()
+                                                          if (a.get("ts") or 0) >= since]
+        agents = sum(a.get("used", a.get("tokens")) or 0 for a in ags)
+        agent_cache = sum(a.get("cache") or 0 for a in ags)
+        return {"cache_read": read + agent_cache, "new_input": inp + create, "input": inp, "cache_write": create,
+                "output": out, "subagents": agents, "used": inp + create + out + agents,
+                "total": read + inp + create + out + agents}
 
     def request(self):
         """Tokens used since the person's last prompt, the number of model calls and when it started."""
@@ -731,9 +788,9 @@ class SessionStats:
         return 1_000_000 if "[1m]" in self.model or self.context > 200_000 else 200_000
 
     def where(self, cwd=None, limit=6):
-        rows = [("Replies written", self.totals()["output"])]
+        rows = [("Replies written", self.totals(self.scope())["output"])]
         rows += [("Read " + short_path(p, cwd, 40), n) for p, n in self.reads.items()]
-        rows += [("Agent " + a["name"], a.get("used", a.get("tokens")) or 0) for a in self.agents.values()]
+        rows += [("Agent " + a["name"], a.get("used", a.get("tokens")) or 0) for a in self.session_agents()]
         rows += [("Shell " + c, n) for c, n in self.shell.items()]
         rows = [r for r in rows if r[1] > 0]
         return sorted(rows, key=lambda r: -r[1])[:limit]
@@ -752,6 +809,125 @@ def agent_live(a, now=None):
         return False
     last = a.get("seen") or a.get("ts")
     return now is None or last is None or now - last < STALL
+
+
+_AUTO = {}
+
+
+def autocompact_pct():
+    """The context percentage at which Claude Code compacts on its own, when the person set one
+    (CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, in the environment or in Claude Code's settings.json "env"); else None.
+    The settings file is read at most every 30 seconds, since the panel asks on every frame."""
+    raw = os.environ.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE")
+    base = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
+    key = (raw, base)
+    hit = _AUTO.get(key)
+    if hit and time.time() - hit[0] < 30:
+        return hit[1]
+    pct = _autocompact_pct(raw, base)
+    _AUTO.clear()
+    _AUTO[key] = (time.time(), pct)
+    return pct
+
+
+def _autocompact_pct(raw, base):
+    if raw is None:
+        try:
+            with open(os.path.join(base, "settings.json")) as fh:
+                env = json.load(fh).get("env") or {}
+            raw = env.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") if isinstance(env, dict) else None
+        except (OSError, ValueError, AttributeError):
+            raw = None
+    try:
+        pct = int(float(raw))
+    except (TypeError, ValueError):
+        return None
+    return pct if 5 <= pct <= 100 else None
+
+
+def suggestions(stats, now=None, budget=None, limit=3):
+    """What the person could do next in Claude Code, from this session's own context, cache, memory and subagents,
+    most urgent first, as (rank, sentence). Empty when nothing needs changing."""
+    now = time.time() if now is None else now
+    out = []
+    ctx, win = stats.context, stats.window()
+    f = ctx / float(win) if ctx else 0.0
+    auto = autocompact_pct()
+    warn = (auto - 10) / 100.0 if auto else 0.6
+    idle = not stats.working(now)
+    if ctx and f >= warn:
+        if auto:
+            text = (f"Context is {int(f * 100)}% full ({fmt_tokens(ctx)} of {fmt_tokens(win)}), and Claude Code "
+                    f"compacts on its own at {auto}%. Type /compact now, followed by what to keep, so you choose what "
+                    f"the summary holds.")
+        else:
+            text = (f"Context is {int(f * 100)}% full ({fmt_tokens(ctx)} of {fmt_tokens(win)}), and every call "
+                    f"re-reads all of it. Type /compact, followed by what to keep, to continue with a smaller context.")
+        out.append((1, text))
+    last = stats.last_ts
+    if idle and last and ctx >= 20_000:
+        gone = now - last
+        life = "one hour" if stats.ttl >= 3600 else "five minutes"
+        if gone >= stats.ttl:
+            out.append((2, f"The prompt cache expired after {life} idle, so your next message writes about "
+                           f"{fmt_tokens(ctx)} tokens back into it. If you are starting a different task, type /clear "
+                           f"first."))
+        elif stats.ttl - gone <= CACHE_WARN and stats.ttl >= 3600:
+            left = max(1, int((stats.ttl - gone) // 60))
+            out.append((4, f"The prompt cache expires in {left} min. Reply before then to keep the "
+                           f"{fmt_tokens(ctx)} of context cached, or type /clear if this task is finished."))
+    if idle and ctx and f >= 0.5:
+        if stats.saved:
+            n = stats.saved
+            out.append((3, f"{n} lesson{'s were' if n != 1 else ' was'} saved this session, so a new session recalls "
+                           f"{'them' if n != 1 else 'it'}. If this task is finished, type /clear to start again with a "
+                           f"small context."))
+        else:
+            out.append((3, "Nothing from this session has been saved to memory yet. Ask Claude to record what it "
+                           "learned before you type /clear, or it will not be recalled later."))
+    for a in stats.session_agents():
+        if a.get("status") in ("running", "background") and not agent_live(a, now):
+            out.append((3, f"Subagent \"{a['name']}\" has been silent for 30 minutes. Ask Claude to check on it or "
+                           f"stop it."))
+            break
+    b = budget or budgets()
+    spent = billable(stats.totals(stats.scope())) / max(1, b["session"])
+    if spent >= 0.8:
+        out.append((2, f"This session has used {int(spent * 100)}% of its token budget. Type /compact to shrink the "
+                       f"context, or /clear if the task is finished."))
+    out.sort(key=lambda x: x[0])
+    return out[:limit]
+
+
+SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+
+
+def dashboard_offer(ev, cli, env=None):
+    """Context for SessionStart: ask the person once whether to open the token dashboard for this session, and how to
+    open it where they are (the desktop app's Terminal panel, a tmux split, or a second terminal). Empty when the
+    panel is already open (started by `nodaris`), after a compaction, for other hosts, or when switched off."""
+    env = os.environ if env is None else env
+    sid = str(ev.get("session_id") or "")
+    if ev.get("host") != "claude" or ev.get("source") not in (None, "startup", "resume") or env.get("NODARIS_PANEL_LINK"):
+        return ""
+    if load_settings().get("dashboard_offer") is False or not SESSION_ID_RE.match(sid):
+        return ""
+    cmd = " ".join(shlex.quote(x) for x in (cli, "watch", "--host", "claude", "--session", sid))
+    ask = ("Token dashboard (from the Nodaris harness): in your first reply of this session, ask the person once, "
+           "with the AskUserQuestion tool, whether to open the live token dashboard for this session, with the options "
+           "\"Open the dashboard\" and \"Not now\". Then carry on with their request. Do not ask again in this session.")
+    if env.get("CLAUDE_CODE_ENTRYPOINT") == "claude-desktop":
+        how = ("If they choose to open it, run this command in the app's Terminal panel with the terminal tool "
+               "(mcp__terminal__run_in_terminal; load it with ToolSearch first if it is deferred): " + cmd)
+    elif env.get("TMUX"):
+        how = ("If they choose to open it, open it beside this session with the Bash tool: tmux split-window -h -l 44% "
+               + shlex.quote(cmd))
+    else:
+        how = ("If they choose to open it, give them this command to run in a second terminal window: " + cmd
+               + " . Tell them that starting Claude Code with `nodaris` opens the dashboard beside the session on its "
+               "own, when tmux is installed.")
+    off = f" They can stop this question by setting \"dashboard_offer\": false in {os.path.join(policy.home(), 'settings.json')}."
+    return ask + " " + how + off
 
 
 def signals_path(session_id):
@@ -960,6 +1136,27 @@ def flow_lines(stats, cv, cols, now, t, unicode=True, height=3):
     return rows, (fmt_tokens(max(vals)) if any(vals) else "")
 
 
+def when_text(ts, now):
+    """A time on the same day, or a short date for an earlier one."""
+    d, n = datetime.fromtimestamp(ts), datetime.fromtimestamp(now)
+    return d.strftime("%H:%M") if d.date() == n.date() else d.strftime("%b ") + str(d.day) + d.strftime(" %H:%M")
+
+
+def wrap_text(text, width, first, rest):
+    """Word-wrap one sentence into lines that start with `first` and then `rest`."""
+    width = max(20, width)
+    lines, cur = [], ""
+    for word in text.split():
+        if cur and len(cur) + 1 + len(word) > width:
+            lines.append(cur)
+            cur = word
+        else:
+            cur = (cur + " " + word) if cur else word
+    if cur:
+        lines.append(cur)
+    return [(first if i == 0 else rest) + l for i, l in enumerate(lines)]
+
+
 def _head(cv, title, w, note="", unicode=True):
     rule = "─" if unicode else "-"
     note = (" " + note + " ") if note else ""
@@ -971,7 +1168,8 @@ def blocks(stats, cv, width, now, t, cwd=None, unicode=True, budget=None, motion
     """The panel as ordered (title, note, lines) blocks; the frame lays them out in one or two columns."""
     motion = motion or Motion()
     b = budget or budgets()
-    tot = stats.totals()
+    since = stats.scope()
+    tot = stats.totals(since)
     used = motion.value("used", tot["used"], now)
     req = stats.request()
     req_used = motion.value("req", req["used"], now)
@@ -980,9 +1178,20 @@ def blocks(stats, cv, width, now, t, cwd=None, unicode=True, budget=None, motion
     lines = []
     d = motion.recent("used", now)
     badge = cv.seg(f"  +{fmt_tokens(d[0])}", _mix(tui.MUTED, TEAL_LIGHT, d[1])) if d else ""
-    lines.append("This session".ljust(lab) + cv.seg(num(used), tui.ACCENT, bold=True) + " used" + badge)
-    lines.append(" " * lab + cv.seg(f"{fmt_tokens(tot['cache_read']).rjust(7)} cache re-reads, about 1/10 the price",
-                                    tui.MUTED))
+    start = stats.opened or stats.first_ts
+    lines.append("This session".ljust(lab) + cv.seg(num(used), tui.ACCENT, bold=True) + " used"
+                 + (cv.seg(" since " + when_text(start, now), tui.MUTED) if start else "") + badge)
+    parts = [f"{fmt_tokens(tot['cache_write'])} written to cache", f"{fmt_tokens(tot['output'])} output"]
+    if tot["input"]:
+        parts.append(f"{fmt_tokens(tot['input'])} new input")
+    if tot["subagents"]:
+        parts.append(f"{fmt_tokens(tot['subagents'])} subagents")
+    lines.append(" " * lab + cv.seg(" · ".join(parts), tui.MUTED))
+    lines.append(" " * lab + cv.seg(f"{fmt_tokens(tot['cache_read'])} cache re-reads, about 1/10 the price", tui.MUTED))
+    if since is not None and stats.first_ts:
+        whole = stats.totals()
+        lines.append("Whole conversation" + cv.seg(f" {fmt_tokens(whole['used'])} used since "
+                                                    + when_text(stats.first_ts, now), tui.MUTED))
     if req["start"]:
         dur = fmt_ms((now - req["start"]) * 1000) if stats.working(now) else ""
         lines.append("This request".ljust(lab) + num(req_used) + cv.seg(
@@ -997,21 +1206,20 @@ def blocks(stats, cv, width, now, t, cwd=None, unicode=True, budget=None, motion
     f = billable(tot) / max(1, b["session"])
     lines.append("Budget".ljust(lab) + num(billable(tot)) + " " + cv.seg(bar(f, bw, unicode), level_rgb(f))
                  + cv.seg(f" {int(f * 100)}% of {fmt_tokens(b['session'])}", tui.MUTED))
-    if ledger is None:
-        lines.append("Today".ljust(lab) + cv.seg("counting your sessions...", tui.MUTED))
-    else:
-        td, wk = ledger["today"], ledger["week"]
-        lines.append("Today".ljust(lab) + num(td["used"]) + cv.seg(
-            f" used · {td['sessions']} session{'s' if td['sessions'] != 1 else ''}", tui.MUTED))
-        lines.append("Last 7 days".ljust(lab) + num(wk["used"]) + cv.seg(
-            f" used · {wk['sessions']} sessions" + ("" if ledger.get("complete") else " · still counting"), tui.MUTED))
     out = [("", "", lines)]
+
+    tips = suggestions(stats, now, b)
+    s_lines = []
+    for _, text in tips:
+        s_lines += wrap_text(text, width - 2, cv.seg("› " if unicode else "> ", TEAL), "  ")
+    out.append(("Suggestions", f"{len(tips)} now" if tips else "",
+                s_lines or [cv.seg("Nothing to change. Context and cache are healthy.", tui.MUTED)]))
 
     flow, peak = flow_lines(stats, cv, width, now, t, unicode)
     out.append(("Token flow", (f"peak {peak} per 10s" if width >= 60 else f"peak {peak}") if peak else "quiet", flow))
 
     a_lines = []
-    agents = sorted(stats.agents.values(), key=lambda a: (not agent_live(a, now), -(a.get("done_ts") or a.get("ts") or 0)))
+    agents = sorted(stats.session_agents(since), key=lambda a: (not agent_live(a, now), -(a.get("done_ts") or a.get("ts") or 0)))
     for a in agents[:6]:
         st = a.get("status") or ""
         live = agent_live(a, now)
@@ -1032,7 +1240,7 @@ def blocks(stats, cv, width, now, t, cwd=None, unicode=True, budget=None, motion
                        + cv.seg(fmt_ms(ms).rjust(6), tui.MUTED))
         if live and a.get("last"):
             a_lines.append(cv.seg(("  └ " if unicode else "  - ") + a["last"], tui.MUTED))
-    if stats.agents:
+    if agents:
         spent = gate_spent(session) if session else 0
         spent += sum(a.get("used", 0) + a.get("cache", 0) // 10 for a in stats.agents.values() if agent_live(a, now))
         f = spent / max(1, b["agents"])
@@ -1063,13 +1271,25 @@ def blocks(stats, cv, width, now, t, cwd=None, unicode=True, budget=None, motion
     f_lines = [cv.seg(("W " if mode == "written" else "R "), TEAL if mode == "written" else tui.MUTED) + short_path(p, cwd, width - 3)
                for p, mode in stats.recent_files(6)]
     out.append(("Files", "", f_lines or [cv.seg("none touched yet", tui.MUTED)]))
+
+    if ledger is None:
+        o_lines = [cv.seg("Counting your sessions...", tui.MUTED)]
+    else:
+        td, wk = ledger["today"], ledger["week"]
+        o_lines = ["Today".ljust(lab) + num(td["used"]) + cv.seg(
+                       f" used · {td['sessions']} session{'s' if td['sessions'] != 1 else ''}", tui.MUTED),
+                   "Last 7 days".ljust(lab) + num(wk["used"]) + cv.seg(
+                       f" used · {wk['sessions']} sessions" + ("" if ledger.get("complete") else " · still counting"),
+                       tui.MUTED)]
+    out.append(("All your sessions", "", o_lines))
     return out
 
 
 def sections(stats, cv, width, cwd=None, unicode=True, now=None):
     """The titled panels as {title: [lines]}, for the plain summary."""
     now = time.time() if now is None else now
-    return {title: lines for title, _, lines in blocks(stats, cv, width, now, 0.0, cwd, unicode)[2:]}
+    return {title: lines for title, _, lines in blocks(stats, cv, width, now, 0.0, cwd, unicode)
+            if title not in ("", "Token flow", "All your sessions")}
 
 
 def header(stats, cv, cols, now, t, path, unicode=True):
@@ -1111,12 +1331,15 @@ def render_plain(stats, cwd=None, now=None, budget=None, path=None, ledger=None)
     """One summary block with no escape codes, for pipes, NO_COLOR and reduced motion."""
     now = time.time() if now is None else now
     b = budget or budgets()
-    tot = stats.totals()
+    since = stats.scope()
+    tot = stats.totals(since)
     burn = stats.burn_per_min(now)
     used = billable(tot) / max(1, b["session"])
     req = stats.request()
+    start = stats.opened or stats.first_ts
     out = ["Nodaris token monitor" + (f" ({short_path(path, None, 60)})" if path else ""),
-           f"Tokens used this session: {tot['used']:,} (new input {tot['new_input']:,}, output {tot['output']:,}, "
+           f"Tokens used this session{' since ' + when_text(start, now) if start else ''}: {tot['used']:,} "
+           f"(cache writes {tot['cache_write']:,}, output {tot['output']:,}, new input {tot['input']:,}, "
            f"subagents {tot['subagents']:,})",
            f"Cache re-reads: {tot['cache_read']:,}, billed at about a tenth of the input price, not counted above",
            f"This request: {req['used']:,} tokens used in {req['calls']} call(s)",
@@ -1124,13 +1347,15 @@ def render_plain(stats, cwd=None, now=None, budget=None, path=None, ledger=None)
            f"Session budget: {int(used * 100)}% of {b['session']:,} ({b['plan']} plan, {level(used)})",
            f"Agent budget: {int(tot['subagents'] / max(1, b['agents']) * 100)}% of {b['agents']:,}",
            f"Gate stops: {len(stats.gates)}" + (f"; learner changes: {stats.learner}" if stats.learner else "")]
+    if since is not None and stats.first_ts:
+        out.insert(2, f"Whole conversation since {when_text(stats.first_ts, now)}: {stats.totals()['used']:,} tokens used")
     if stats.context:
         out.insert(4, f"Context now: {stats.context:,} of {stats.window():,} tokens")
-    if ledger:
-        out.append(f"Today: {ledger['today']['used']:,} tokens used across {ledger['today']['sessions']} session(s); "
-                   f"last 7 days: {ledger['week']['used']:,}")
     for title, body in sections(stats, Canvas("none"), 72, cwd, unicode=False, now=now).items():
         out += ["", title + ":"] + ["  " + l.rstrip() for l in body]
+    if ledger:
+        out += ["", f"All your sessions: {ledger['today']['used']:,} tokens used today across "
+                    f"{ledger['today']['sessions']} session(s); {ledger['week']['used']:,} in the last 7 days"]
     return "\n".join(out)
 
 
