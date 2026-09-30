@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.1.0
 
+- Laya, a local decision model, can read prompts instead of Jev for people without a Jev key: `nodaris-harness laya on|off|status` and the `decider` setting (`jev`, `laya`, `off`). It is reached only on this machine, needs no key, costs nothing and gets the same privacy checks as Jev. `scripts/laya_dataset.py` and `scripts/laya_eval.py` build its training data from Jev's past answers and measure agreement against a gate. See docs/LAYA.md; the trained model is not shipped yet.
 - "This session" in the panel, the status line and the end-of-reply line now counts from the moment the session was last opened (a start, a resume or /clear, as Claude Code records it in the transcript). A conversation resumed over several days used to show its whole history as "this session"; that total now appears on its own line, labelled "Whole conversation" with its start date. Subagents launched before the session opened are no longer counted or listed.
 - Tokens used are broken down into cache writes, output, new input and subagents, next to the cache re-reads.
 - Added a Suggestions block that reads the session's own context, cache and memory: type /compact when the context is filling (it names Claude Code's own compaction point when `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is set), what the next message costs once the prompt cache has expired and when a one-hour cache is about to, /clear when lessons from the session are saved, a warning when nothing has been saved yet, a stalled subagent, and a budget nearly spent. The top suggestion is added to the end-of-reply line in Claude Code.

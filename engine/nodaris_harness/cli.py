@@ -507,6 +507,37 @@ def cmd_jev(a):
     return 0
 
 
+def cmd_laya(a):
+    """Laya, the local decision model: switch the harness to it or back, and check that its server answers."""
+    from . import jev
+    path = os.path.join(policy.home(), "settings.json")
+    if a.action in ("on", "off"):
+        s = jev._settings()
+        if a.action == "on":
+            s["decider"] = "laya"
+        else:
+            s.pop("decider", None)
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w") as fh:
+            json.dump(s, fh, indent=1)
+            fh.write("\n")
+        os.replace(tmp, path)
+        if a.action == "on":
+            print("Laya is on. Prompts are read by the Laya server on this machine instead of Jev.")
+        else:
+            print("Laya is off. " + ("Jev reads prompts again." if jev.backend() == "jev" else "No decision model reads prompts."))
+        return 0
+    url = jev.laya_endpoint()
+    print("Laya is %s. Server: %s." % ("on" if jev.backend() == "laya" else "off",
+                                        url or "not on this machine, so it will not be used"))
+    if url:
+        ok, ms = jev.probe(url)
+        print("The server answered in %d ms." % ms if ok else
+              "The server did not answer. Start it with `laya-serve` (see docs/LAYA.md), then run this again.")
+    return 0
+
+
 def onboard_settings():
     from . import onboard
     return onboard.load() or {}
@@ -590,6 +621,8 @@ def main(argv=None):
     s = sub.add_parser("jev", help="Jev, the prompt reader: status, on, off, or fetch the team key from AWS")
     s.add_argument("action", choices=["status", "on", "off", "fetch-key"]); s.add_argument("--profile")
     s.set_defaults(fn=cmd_jev)
+    s = sub.add_parser("laya", help="Laya, the local decision model: status, on or off")
+    s.add_argument("action", choices=["status", "on", "off"]); s.set_defaults(fn=cmd_laya)
     s = sub.add_parser("setup-check", help="what you still need to set up yourself: sign-ins, git, the Jev key")
     s.set_defaults(fn=cmd_setup_check)
     s = sub.add_parser("usage", help="tokens used today and over the last seven days, across every session")

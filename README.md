@@ -45,7 +45,7 @@ Nodaris AI staff and contractors, and partners Nodaris AI authorises in writing.
 2. Clone the repository: `git clone https://github.com/NodarisAI/Coding-Agent_Harness.git ~/.nodaris-harness-src`
 3. Run the installer and answer its questions: `cd ~/.nodaris-harness-src && python3 install.py`
 
-**Nodaris team members:** follow [docs/TEAM-SETUP.md](docs/TEAM-SETUP.md). It covers the sign-ins you do yourself (Claude, GitHub, AWS), the Jev team key, restarting Claude Code in the desktop app and on the command line, and how pushes and reviews work.
+**Nodaris team members:** follow [docs/TEAM-SETUP.md](docs/TEAM-SETUP.md). It covers the sign-ins you do yourself (Claude, GitHub, AWS), the Jev team key (or Laya, the local alternative in [docs/LAYA.md](docs/LAYA.md)), restarting Claude Code in the desktop app and on the command line, and how pushes and reviews work.
 
 The installer asks a few questions (your company, how you will use it, which agents to connect, how you want replies written), shows the exact changes for each agent, and installs only after you agree. It then runs the doctor to prove the install works. See [INSTALL.md](INSTALL.md) for every platform and for troubleshooting.
 
@@ -94,6 +94,7 @@ To undo: `python3 install.py --uninstall` removes the harness from every agent i
 | `nodaris-harness statusline` | One-line version of the same numbers for Claude Code's status line; added at install only if you have none of your own, removed at uninstall |
 | `nodaris-harness trash <paths>` (`--list`, `--restore ID`, `--empty DAYS`) | Reversible delete: moves files to the harness trash instead of removing them |
 | `nodaris-harness budget --add N` | Raises your per-session subagent token budget |
+| `nodaris-harness laya on`, `off`, `status` | Uses Laya, a decision model on your own machine, to read prompts instead of Jev; no key needed. See [docs/LAYA.md](docs/LAYA.md) |
 | `nodaris-harness ready` (`--arm` to loop) | Are we done? Runs the repository's acceptance list and names what fails and what waits on a person |
 | `nodaris-harness graph` (`--install` first) | Builds the code graphs for the current repository |
 | `nodaris-harness onboard` | Runs the onboarding again, for example to change packs or turn team sync on |

@@ -286,6 +286,8 @@ def validate(s):
     b = s.get("subagent_budget_tokens")
     if isinstance(b, bool) or not isinstance(b, int) or not 10000 <= b <= 10000000:
         raise SettingsError("subagent_budget_tokens", "must be a whole number from 10000 to 10000000")
+    if "decider" in s and s["decider"] not in ("jev", "laya", "off"):
+        raise SettingsError("decider", "must be jev, laya or off")
     t = s.get("team_sync")
     if not isinstance(t, dict) or not isinstance(t.get("enabled"), bool):
         raise SettingsError("team_sync", "must be an object with enabled true or false")
